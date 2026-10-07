@@ -1,5 +1,6 @@
 """Plain async engine + session factory tests."""
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from unifi_api.db.session import get_sessionmaker
 @pytest.mark.parametrize("filename", ["state%20literal.db", "state%2Fliteral.db", "state?mode=ro.db"])
 @pytest.mark.parametrize("as_string", [False, True])
 async def test_engine_opens_the_literal_existing_database(tmp_path: Path, filename: str, as_string: bool) -> None:
+    if os.name == "nt" and "?" in filename:
+        pytest.skip("Windows filesystems cannot create a filename containing '?'.")
     db_path = tmp_path / filename
     with sqlite3.connect(db_path) as connection:
         connection.execute("CREATE TABLE marker (value TEXT)")

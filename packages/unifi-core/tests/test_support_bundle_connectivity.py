@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import ssl
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
@@ -113,7 +115,7 @@ async def test_network_probe_uses_existing_session_once_without_reconnect(verify
     assert session.calls[0][0][1] == f"{manager.url_base}{path}"
     assert session.calls[0][1]["timeout"].total == 10
     assert session.calls[0][1]["allow_redirects"] is False
-    assert session.calls[0][1]["ssl"] is (None if verify_ssl else False)
+    assert session.calls[0][1]["ssl"] is manager._tls
     assert context.exited is True
     assert context.body_read is False
     manager.initialize.assert_not_awaited()
@@ -321,9 +323,12 @@ async def test_aiohttp_stale_connection_has_one_wire_attempt_for_support_only(
             await writer.wait_closed()
             handlers.discard(task)
 
-    server = await asyncio.start_server(serve, "127.0.0.1", 0)
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    fixtures = Path(__file__).parent / "fixtures/tls"
+    tls.load_cert_chain(fixtures / "cert.pem", fixtures / "key.pem")
+    server = await asyncio.start_server(serve, "127.0.0.1", 0, ssl=tls)
     port = server.sockets[0].getsockname()[1]
-    base = f"http://127.0.0.1:{port}"
+    base = f"https://127.0.0.1:{port}"
     try:
         async with server, aiohttp.ClientSession() as session:
             real_request = session.request
@@ -337,7 +342,7 @@ async def test_aiohttp_stale_connection_has_one_wire_attempt_for_support_only(
 
             monkeypatch.setattr(session, "request", local_request)
             if product == "network":
-                manager = ConnectionManager("controller.example.invalid", "user", "password")
+                manager = ConnectionManager("127.0.0.1", "user", "password", port=port)
                 manager._aiohttp_session = session
                 manager.controller = SimpleNamespace(connectivity=SimpleNamespace(is_unifi_os=False))
             elif product == "protect":
@@ -363,7 +368,7 @@ async def test_aiohttp_stale_connection_has_one_wire_attempt_for_support_only(
             assert result.outcome == ("connection" if use_probe_middleware else "success")
             assert not session.closed
             # The same session remains usable for ordinary controller calls.
-            async with session.get(f"{base}/ordinary") as response:
+            async with session.get(f"{base}/ordinary", ssl=warm_ssl) as response:
                 assert response.status == 200
     finally:
         server.close()

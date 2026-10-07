@@ -25,6 +25,7 @@ def auto_load_tools(
     enabled_tools: Optional[List[str]] = None,
     server=None,
     meta_tools: Optional[Set[str]] = None,
+    fail_on_error: bool = False,
 ) -> None:
     """Dynamically import tool modules from *base_package*.
 
@@ -45,6 +46,8 @@ def auto_load_tools(
     try:
         tools_pkg: ModuleType = importlib.import_module(base_package)
     except ModuleNotFoundError as exc:
+        if fail_on_error:
+            raise RuntimeError("Strict tool profile could not import its tool package.") from None
         logger.error("Tool package '%s' not found: %s", base_package, exc)
         return
 
@@ -77,6 +80,8 @@ def auto_load_tools(
             loaded_modules.append(simple_name)
             logger.debug("Imported tool module: %s", mod_name)
         except Exception as exc:
+            if fail_on_error:
+                raise RuntimeError("Strict tool profile could not import a tool module.") from None
             logger.warning("Failed to import tool module '%s': %s", mod_name, exc)
 
     logger.info("Loaded %d tool modules: %s", len(loaded_modules), loaded_modules)

@@ -31,7 +31,7 @@ def test_built_wheel_migrates_outside_source_tree(tmp_path: Path) -> None:
     site_packages = (
         venv_dir / "Lib/site-packages" if os.name == "nt" else next((venv_dir / "lib").glob("python*/site-packages"))
     )
-    dependency_paths = [site.getsitepackages()[0], str(REPO_ROOT / "packages/unifi-core/src")]
+    dependency_paths = [*site.getsitepackages(), str(REPO_ROOT / "packages/unifi-core/src")]
     (site_packages / "test-dependencies.pth").write_text("\n".join(dependency_paths) + "\n", encoding="utf-8")
     subprocess.run(
         ["uv", "pip", "install", "--python", str(python), "--no-deps", str(wheel)],

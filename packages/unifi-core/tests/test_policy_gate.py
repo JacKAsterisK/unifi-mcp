@@ -137,7 +137,9 @@ def test_newlines_in_a_variable_name_are_escaped_in_the_log(monkeypatch, caplog)
     _run("protect", PROTECT_GATES, caplog)
 
     assert "\nCRITICAL" not in caplog.text
-    assert "UNIFI_POLICY_PROTECT_X\\nCRITICAL forged line" in caplog.text
+    expected = "UNIFI_POLICY_PROTECT_X\nCRITICAL forged line"
+    expected = expected.upper() if os.name == "nt" else expected
+    assert expected.replace("\n", "\\n") in caplog.text
 
 
 def test_reporting_is_capped_with_a_summary_line(monkeypatch, caplog):

@@ -126,6 +126,7 @@ class TestResolveEnv:
 
     def test_file_path_expands_user(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
         (tmp_path / "pw").write_text("home-secret")
         monkeypatch.setenv("UNIFI_NETWORK_PASSWORD_FILE", "~/pw")
         assert self._resolve() == "home-secret"

@@ -42,6 +42,9 @@ def _resolve(key: str = "password"):
 def helper(tmp_path):
     """Write an executable /bin/sh helper and return its absolute path."""
 
+    if os.name == "nt":
+        pytest.skip("This fixture requires an executable POSIX /bin/sh script.")
+
     def _make(body: str, name: str = "helper.sh") -> Path:
         path = tmp_path / name
         path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
@@ -420,6 +423,7 @@ def test_a_bare_name_is_not_resolved_on_a_dotenv_supplied_path(monkeypatch, capl
     assert SENTINEL not in caplog.text
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Requires POSIX shell/process groups.")
 def test_a_bare_name_resolving_to_a_relative_path_is_refused(monkeypatch, caplog, tmp_path):
     """An empty PATH element means the working directory, which is not ours to trust."""
     planted = tmp_path / "gpgx"
@@ -503,6 +507,7 @@ def test_the_threaded_reader_accumulates_a_helper_that_writes_in_bursts(helper):
     assert data == b"firstsecond"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Requires POSIX shell/process groups.")
 def test_a_term_resistant_descendant_is_killed_before_reporting_success(tmp_path):
     """Reaping the direct helper is not the same as terminating its group.
 
@@ -556,6 +561,7 @@ def test_a_term_resistant_descendant_is_killed_before_reporting_success(tmp_path
 
 
 @pytest.mark.parametrize("reap_leader", [False, True])
+@pytest.mark.skipif(os.name == "nt", reason="Requires POSIX shell/process groups.")
 def test_an_exited_helper_does_not_leave_its_process_group_running(tmp_path, monkeypatch, reap_leader):
     """The group survives its leader, including after that leader is reaped."""
     ready = tmp_path / "descendant-ready"
@@ -605,6 +611,7 @@ def test_an_exited_helper_does_not_leave_its_process_group_running(tmp_path, mon
             proc.stdout.close()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Requires POSIX shell/process groups.")
 def test_an_unsignalable_survivor_is_not_reported_as_a_terminated_tree(tmp_path, monkeypatch):
     """EPERM on the escalation must not inherit the direct child's exit.
 

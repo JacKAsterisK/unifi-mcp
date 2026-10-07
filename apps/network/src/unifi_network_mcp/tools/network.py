@@ -32,6 +32,7 @@ from unifi_core.network.models.wlans import validate_update as validate_wlan_upd
 from unifi_core.network.read_views import shape_network_details, shape_network_list, shape_wlan_list
 from unifi_core.redaction import redact_sensitive_fields
 from unifi_core.write_verification import format_tool_payload
+from unifi_network_mcp.resource_policy import vpn_network_denial
 from unifi_network_mcp.runtime import network_manager, server, should_redact_sensitive_fields
 
 logger = logging.getLogger(__name__)
@@ -460,6 +461,9 @@ async def update_network(
         return {"success": False, "error": f"Failed to prepare network update for {network_id}: {e}"}
     if not current:
         return {"success": False, "error": "Network not found"}
+    denial = vpn_network_denial(current, {**current, **validated_data}, "update")
+    if denial:
+        return {"success": False, "error": denial}
     try:
         validate_wan_dns_state(current, validated_data)
     except ValueError as e:
@@ -680,6 +684,9 @@ async def create_network(
         validated_data = validate_network_create(network_data)
     except ValueError as e:
         return {"success": False, "error": str(e)}
+    denial = vpn_network_denial({}, validated_data, "create")
+    if denial:
+        return {"success": False, "error": denial}
     purpose = validated_data["purpose"]
 
     if not confirm:

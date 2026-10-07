@@ -251,6 +251,9 @@ All mutations use a **preview-then-confirm** flow — you see exactly what will 
 
 ## Configuration
 
+For a local Windows View Only connection with DPAPI credentials, certificate
+pinning, and a strict read-tool profile, see [Local read-only Windows setup](docs/local-readonly-windows.md).
+
 Set these variables in the server's process environment (shell exports, the MCP client's `env` block, or Docker `environment:` / `env_file:`):
 
 | Variable | Required | Description |

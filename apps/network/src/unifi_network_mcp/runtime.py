@@ -184,6 +184,7 @@ def get_connection_manager() -> ConnectionManager:
         site=cfg.site,
         verify_ssl=str(cfg.verify_ssl).lower() in ("true", "1", "yes"),
         auth=get_auth(),
+        tls_sha256=str(cfg.get("tls_sha256", "")),
     )
 
 

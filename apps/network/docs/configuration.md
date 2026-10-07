@@ -202,3 +202,16 @@ permissions:
 ```
 
 You can override the config file location with `CONFIG_PATH=/absolute/path/to/config.yaml` in the process environment. Relative paths are rejected. The server never automatically loads `config/config.yaml` from the working directory; existing custom YAML deployments must select their trusted file explicitly.
+
+## Trusted local certificate pin and strict profiles
+
+Network supports `UNIFI_NETWORK_TLS_SHA256` (shared fallback `UNIFI_TLS_SHA256`)
+with verification enabled. This pins the DER certificate SHA-256 and replaces
+CA/hostname validation. Normal CA verification remains the default when verification
+is enabled without a pin. Invalid/conflicting pins fail construction.
+
+`UNIFI_STRICT_ENABLED_TOOLS=true` selects an optional eager direct-tool profile
+with an explicit nonempty `UNIFI_ENABLED_TOOLS` list and no category filter.
+It excludes meta-tools and refuses startup on import/filter errors. Ordinary
+policy gates still apply at call time; they do not hide tools in default profiles.
+See [Windows setup, pin rotation, and revocation](../../../docs/local-readonly-windows.md).

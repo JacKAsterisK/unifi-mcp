@@ -17,6 +17,8 @@ server:
   # - eager: Register all tools immediately - Best for dev console, automation
   # - lazy: Register meta-tools, load others on-demand - RECOMMENDED for LLMs
   # - meta_only: Register only meta-tools, manual discovery - Maximum context savings
+  # Strict direct-tool allowlist: eager mode, no meta-tools; startup fails on filtering errors.
+  strict_enabled_tools: ${oc.env:UNIFI_STRICT_ENABLED_TOOLS,false}
   tool_registration_mode: ${oc.env:UNIFI_TOOL_REGISTRATION_MODE,lazy}
 
   # Tool filtering (optional, for eager mode)

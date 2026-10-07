@@ -9,6 +9,7 @@ call :func:`register_tools_for_mode` with server-specific parameters.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from typing import Any, Callable
 
 
@@ -72,6 +73,35 @@ async def register_tools_for_mode(
         from unifi_mcp_shared.meta_tools import register_load_tools
     if auto_load_tools is None:
         from unifi_mcp_shared.tool_loader import auto_load_tools
+
+    # Opt-in registration profile, separate from call-time permission gates.
+    # Complete filtering before starting a transport; no background task or
+    # indirect executor may expand this profile after startup.
+    strict = str(config.server.get("strict_enabled_tools", False)).strip().lower()
+    if strict not in {"true", "false", "1", "0", "yes", "no"}:
+        raise ValueError("strict_enabled_tools must be a boolean.")
+    if strict in {"true", "1", "yes"}:
+        from unifi_mcp_shared.meta_tools import is_meta_tool
+
+        enabled = _parse_filter_list(config.server.get("enabled_tools"))
+        if mode != "eager" or not enabled or config.server.get("enabled_categories") not in (None, "", "null"):
+            raise ValueError("Strict tool profiles require eager mode, explicit enabled_tools, and no category filter.")
+        if not isinstance(enabled, Sequence) or any(not isinstance(name, str) or not name for name in enabled):
+            raise ValueError("Strict enabled_tools must contain tool names.")
+        if any(is_meta_tool(name) or name not in tool_module_map for name in enabled):
+            raise ValueError("Strict enabled_tools must contain known direct domain tools only.")
+        auto_load_tools(base_package=base_package, server=server, fail_on_error=True)
+        allowed = set(enabled)
+        tools = await server.list_tools()
+        if not allowed.issubset({tool.name for tool in tools}):
+            raise RuntimeError("Strict tool profile is missing a requested tool.")
+        for tool in tools:
+            if tool.name not in allowed:
+                server.remove_tool(tool.name)
+        if {tool.name for tool in await server.list_tools()} != allowed:
+            raise RuntimeError("Strict tool profile could not be enforced.")
+        logger.info("Strict profile registered %d direct tools", len(allowed))
+        return
 
     # Build kwargs for meta-tools (prefix/server_label only if non-default)
     meta_kwargs: dict[str, Any] = dict(

@@ -56,6 +56,7 @@ class UniFiSettings:
     port: int = 443
     site: str = "default"
     verify_ssl: bool = False
+    tls_sha256: str = ""
     controller_type: str = "auto"
     api_key: str = ""  # Optional API key for official API access
 
@@ -69,6 +70,7 @@ class UniFiSettings:
             port=int(cfg.get("port", 443)),
             site=str(cfg.get("site", "default")),
             verify_ssl=bool(cfg.get("verify_ssl", False)),
+            tls_sha256=str(cfg.get("tls_sha256", "")),
             controller_type=str(cfg.get("controller_type", "auto")),
             api_key=str(cfg.get("api_key", "")),
         )
@@ -86,7 +88,7 @@ def load_config(path_override: str | Path | None = None):
     return load_server_config(
         package_name="unifi_network_mcp.config",
         env_prefix="NETWORK",
-        keys=("host", "username", "password", "port", "site", "verify_ssl", "controller_type", "api_key"),
+        keys=("host", "username", "password", "port", "site", "verify_ssl", "tls_sha256", "controller_type", "api_key"),
         logger=logger,
     )
 

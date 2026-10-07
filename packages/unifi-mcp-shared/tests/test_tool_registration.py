@@ -34,6 +34,70 @@ def _deps():
     }
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode,enabled", [("lazy", "unifi_list_clients"), ("eager", ""), ("eager", "unifi_execute")])
+async def test_strict_profile_rejects_invalid_configuration_before_registration(mode, enabled):
+    deps = _deps()
+    with pytest.raises(ValueError):
+        await register_tools_for_mode(
+            mode=mode,
+            server=_server(),
+            base_package="test.tools",
+            config=_config(strict_enabled_tools=True, enabled_tools=enabled),
+            logger=logging.getLogger("test"),
+            **deps,
+        )
+    deps["register_meta_tools"].assert_not_called()
+    deps["auto_load_tools"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_strict_profile_finishes_filtering_and_removes_meta_tools():
+    deps = _deps()
+    tools = {
+        name: SimpleNamespace(name=name) for name in ("unifi_list_clients", "unifi_execute", "unifi_delete_network")
+    }
+    server = SimpleNamespace(list_tools=AsyncMock(side_effect=lambda: list(tools.values())), remove_tool=tools.pop)
+    await register_tools_for_mode(
+        mode="eager",
+        server=server,
+        base_package="test.tools",
+        config=_config(strict_enabled_tools=True, enabled_tools="unifi_list_clients"),
+        logger=logging.getLogger("test"),
+        **deps,
+    )
+    assert set(tools) == {"unifi_list_clients"}
+    deps["register_meta_tools"].assert_not_called()
+    deps["setup_lazy_loading"].assert_not_called()
+    deps["auto_load_tools"].assert_called_once_with(base_package="test.tools", server=server, fail_on_error=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["list", "remove", "incomplete", "import"])
+async def test_strict_profile_propagates_startup_failures(failure):
+    deps = _deps()
+    tool = SimpleNamespace(name="unifi_list_clients")
+    server = SimpleNamespace(
+        list_tools=AsyncMock(return_value=[tool, SimpleNamespace(name="unifi_execute")]),
+        remove_tool=Mock(side_effect=RuntimeError("synthetic failure")),
+    )
+    if failure == "list":
+        server.list_tools.side_effect = RuntimeError("synthetic failure")
+    elif failure == "incomplete":
+        server.list_tools.return_value = []
+    elif failure == "import":
+        deps["auto_load_tools"].side_effect = RuntimeError("synthetic failure")
+    with pytest.raises(RuntimeError):
+        await register_tools_for_mode(
+            mode="eager",
+            server=server,
+            base_package="test.tools",
+            config=_config(strict_enabled_tools=True, enabled_tools="unifi_list_clients"),
+            logger=logging.getLogger("test"),
+            **deps,
+        )
+
+
 class TestRegisterToolsForMode:
     """Tests for the tool visibility surfaces in each registration mode."""
 

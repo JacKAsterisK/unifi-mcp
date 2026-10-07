@@ -25,6 +25,7 @@ from aiounifi.models.configuration import Configuration
 from unifi_core.auth import AuthenticationStatus, UniFiAuth
 from unifi_core.exceptions import UniFiAuthError
 from unifi_core.mac import mask_exception_macs, mask_macs
+from unifi_core.network.transport import controller_origin, controller_tls, sdk_tls
 from unifi_core.redaction import collect_secret_values, sanitize_exception, scrub_secret_values
 from unifi_core.support_bundle import (
     ConnectivityProbe,
@@ -155,8 +156,8 @@ async def detect_unifi_os_pre_login(
         # Probe 1: GET base URL without following redirects
         # UniFi OS typically returns 200 OK with the web UI
         # Standalone controllers often redirect to /manage or return different status
-        async with session.get(base_url, timeout=client_timeout, ssl=False, allow_redirects=False) as response:
-            logger.debug("Pre-login probe %s: status=%s", base_url, response.status)
+        async with session.get(base_url, timeout=client_timeout, allow_redirects=False) as response:
+            logger.debug("Pre-login probe status=%s", response.status)
 
             if response.status == 200:
                 # UniFi OS returns 200 at base URL
@@ -164,17 +165,16 @@ async def detect_unifi_os_pre_login(
                 return True
             elif response.status in (301, 302, 303, 307, 308):
                 # Redirect typically indicates standalone controller
-                location = response.headers.get("Location", "")
-                logger.debug("Pre-login detection: redirect to %s", location)
+                logger.debug("Pre-login detection: redirect response")
                 # Could be standalone redirecting to /manage
                 return False
 
     except asyncio.TimeoutError:
         logger.debug("Pre-login detection: timeout")
     except aiohttp.ClientError as e:
-        logger.debug("Pre-login detection failed: %s", e)
+        logger.debug("Pre-login detection failed: %s", type(e).__name__)
     except Exception as e:
-        logger.debug("Pre-login detection unexpected error: %s", e)
+        logger.debug("Pre-login detection unexpected error: %s", type(e).__name__)
 
     return None
 
@@ -219,11 +219,15 @@ async def detect_with_retry(
             if attempt < max_retries - 1:
                 delay = 2**attempt  # Exponential backoff: 1s, 2s, 4s
                 logger.debug(
-                    "Detection attempt %s/%s failed: %s. Retrying in %ss...", attempt + 1, max_retries, e, delay
+                    "Detection attempt %s/%s failed: %s. Retrying in %ss...",
+                    attempt + 1,
+                    max_retries,
+                    type(e).__name__,
+                    delay,
                 )
                 await asyncio.sleep(delay)
             else:
-                logger.warning("Detection failed after %s attempts: %s", max_retries, e)
+                logger.warning("Detection failed after %s attempts: %s", max_retries, type(e).__name__)
 
     return None
 
@@ -248,9 +252,9 @@ async def _probe_endpoint(
         False otherwise
     """
     try:
-        logger.debug("Probing %s endpoint: %s", endpoint_name, url)
+        logger.debug("Probing %s endpoint", endpoint_name)
 
-        async with session.get(url, timeout=timeout, ssl=False) as response:
+        async with session.get(url, timeout=timeout, allow_redirects=False) as response:
             if response.status == 200:
                 try:
                     data = await response.json()
@@ -258,13 +262,13 @@ async def _probe_endpoint(
                         logger.debug("%s endpoint responded successfully", endpoint_name)
                         return True
                 except Exception as e:
-                    logger.debug("%s endpoint returned 200 but invalid JSON: %s", endpoint_name, e)
+                    logger.debug("%s endpoint returned 200 but invalid JSON: %s", endpoint_name, type(e).__name__)
     except asyncio.TimeoutError:
         logger.debug("%s endpoint probe timed out", endpoint_name)
     except aiohttp.ClientError as e:
-        logger.debug("%s endpoint probe failed: %s", endpoint_name, e)
+        logger.debug("%s endpoint probe failed: %s", endpoint_name, type(e).__name__)
     except Exception as e:
-        logger.debug("Unexpected error probing %s endpoint: %s", endpoint_name, e)
+        logger.debug("Unexpected error probing %s endpoint: %s", endpoint_name, type(e).__name__)
 
     return False
 
@@ -340,6 +344,7 @@ class ConnectionManager:
         max_retries: int = 3,
         retry_delay: int = 5,
         auth: UniFiAuth | None = None,
+        tls_sha256: str = "",
     ):
         """Initialize the Connection Manager."""
         _silence_aiounifi_logs()
@@ -349,6 +354,7 @@ class ConnectionManager:
         self.port = port
         self.site = site
         self.verify_ssl = verify_ssl
+        self._tls = controller_tls(verify_ssl, tls_sha256)
         self.cache_timeout = cache_timeout
         self._max_retries = max_retries
         self._retry_delay = retry_delay
@@ -589,9 +595,9 @@ class ConnectionManager:
                 "GET",
                 f"{self.url_base}{path}",
                 timeout=aiohttp.ClientTimeout(total=10),
-                ssl=False if not self.verify_ssl else None,
+                ssl=self._tls,
                 allow_redirects=False,
-                middlewares=(no_retry_support_request,),
+                middlewares=(controller_origin(self.url_base), no_retry_support_request),
             ) as response:
                 outcome = connectivity_http_outcome(response.status)
         except TimeoutError:
@@ -688,12 +694,13 @@ class ConnectionManager:
         session = await self.unifi_auth.get_api_key_session(
             cookie_jar=aiohttp.DummyCookieJar(),
             timeout=aiohttp.ClientTimeout(total=10),
-            middlewares=(self._key_read_transport,),
+            connector=aiohttp.TCPConnector(ssl=self._tls),
+            middlewares=(controller_origin(self.url_base), self._key_read_transport),
         )
         try:
             for prefix in prefixes:
                 async with session.get(
-                    f"{self.url_base}{prefix}/api/self/sites", ssl=self.verify_ssl, allow_redirects=False
+                    f"{self.url_base}{prefix}/api/self/sites", ssl=self._tls, allow_redirects=False
                 ) as response:
                     if response.status == 429:
                         raise AuthenticationRateLimitError("API-key capability probe rate limited; retry later.")
@@ -719,7 +726,7 @@ class ConnectionManager:
                     password="",
                     port=self.port,
                     site=self.site,
-                    ssl_context=False if not self.verify_ssl else None,
+                    ssl_context=sdk_tls(self._tls),
                 )
                 self.controller = Controller(config=config)
                 self.controller.connectivity.is_unifi_os = bool(prefix)
@@ -777,12 +784,15 @@ class ConnectionManager:
         prefix = self._integration_prefix if self._integration_prefix is not None else "/proxy/network"
         try:
             async with await self.unifi_auth.get_api_key_session(
-                cookie_jar=aiohttp.DummyCookieJar(), timeout=aiohttp.ClientTimeout(total=10)
+                cookie_jar=aiohttp.DummyCookieJar(),
+                timeout=aiohttp.ClientTimeout(total=10),
+                connector=aiohttp.TCPConnector(ssl=self._tls),
+                middlewares=(controller_origin(self.url_base),),
             ) as session:
                 async with session.get(
                     f"{self.url_base}{prefix}/integration{path}",
                     params=params,
-                    ssl=self.verify_ssl,
+                    ssl=self._tls,
                     allow_redirects=False,
                 ) as response:
                     if response.status == 429:
@@ -887,7 +897,7 @@ class ConnectionManager:
             if self._initialized and self.controller and self._aiohttp_session and not self._aiohttp_session.closed:
                 return True
 
-            logger.info("Attempting to connect to Unifi controller at %s...", self.host)
+            logger.info("Attempting to connect to Unifi controller")
             for attempt in range(self._max_retries):
                 self._support_attempt = connection_attempt_started()
                 try:
@@ -897,9 +907,11 @@ class ConnectionManager:
                         await self._aiohttp_session.close()
                         self._aiohttp_session = None
 
-                    connector = aiohttp.TCPConnector(ssl=False if not self.verify_ssl else None)
+                    connector = aiohttp.TCPConnector(ssl=self._tls)
                     self._aiohttp_session = aiohttp.ClientSession(
-                        connector=connector, cookie_jar=aiohttp.CookieJar(unsafe=True)
+                        connector=connector,
+                        cookie_jar=aiohttp.CookieJar(unsafe=True),
+                        middlewares=(controller_origin(self.url_base),),
                     )
 
                     # Controller type detection/override configuration
@@ -949,7 +961,7 @@ class ConnectionManager:
                         password=self.password,
                         port=self.port,
                         site=self.site,
-                        ssl_context=False if not self.verify_ssl else None,
+                        ssl_context=sdk_tls(self._tls),
                     )
 
                     self.controller = Controller(config=config)
@@ -995,7 +1007,7 @@ class ConnectionManager:
                     self._last_connection_error = None
                     self._support_attempt = connection_attempt_succeeded()
                     self._clear_reconnect_block()
-                    logger.info("Successfully connected to Unifi controller at %s for site '%s'", self.host, self.site)
+                    logger.info("Successfully connected to Unifi controller")
                     self._invalidate_cache()
                     return True
 
