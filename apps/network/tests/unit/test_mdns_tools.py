@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from unifi_core.network.models.mdns import mdns_from_controller
+from unifi_core.network.models.mdns import mdns_from_controller, validate_mdns_service_selection
 from unifi_core.write_verification import noop_write
 
 RECORD = {
@@ -24,6 +24,12 @@ def manager(monkeypatch):
     manager = MagicMock()
     manager._connection.site = "default"
     manager.get_mdns_settings = AsyncMock(return_value=mdns_from_controller(RECORD))
+
+    async def preview(updates):
+        validate_mdns_service_selection({**RECORD, **updates})
+        return mdns_from_controller(RECORD), updates
+
+    manager.preview_mdns_settings_update = AsyncMock(side_effect=preview)
     manager.update_mdns_settings = AsyncMock(return_value=noop_write(resource=RECORD))
     monkeypatch.setattr(system, "system_manager", manager)
     return manager
@@ -77,7 +83,20 @@ async def test_safe_error_response(manager):
     from unifi_network_mcp.tools.system import get_mdns_settings, update_mdns_settings
 
     manager.get_mdns_settings.side_effect = RuntimeError("synthetic-secret")
+    manager.preview_mdns_settings_update.side_effect = RuntimeError("synthetic-secret")
     read = await get_mdns_settings()
     preview = await update_mdns_settings({"mode": "auto"})
     assert "synthetic-secret" not in repr(read)
     assert "synthetic-secret" not in repr(preview)
+
+
+@pytest.mark.asyncio
+async def test_selected_network_preview_delegates_live_validation_without_a_write(manager):
+    from unifi_network_mcp.tools.system import update_mdns_settings
+
+    updates = {"enabled_for_network_ids": ["a" * 24, "b" * 24]}
+    result = await update_mdns_settings(updates)
+    assert result["success"] and result["requires_confirmation"]
+    assert result["preview"]["proposed"]["enabled_for_network_ids"] == updates["enabled_for_network_ids"]
+    manager.preview_mdns_settings_update.assert_awaited_once_with(updates)
+    manager.update_mdns_settings.assert_not_awaited()

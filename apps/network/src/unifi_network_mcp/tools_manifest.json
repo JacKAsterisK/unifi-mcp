@@ -9045,7 +9045,7 @@
         "readOnlyHint": true
       },
       "auth_method": "local_only",
-      "description": "Get site-wide mDNS service settings and read-only network scope.",
+      "description": "Get site-wide mDNS service settings and selected LAN network scope.",
       "name": "unifi_get_mdns_settings",
       "schema": {
         "input": {
@@ -9308,7 +9308,7 @@
         "readOnlyHint": true
       },
       "auth_method": "local_only",
-      "description": "Get details for a specific network by ID. By default (summary=false) returns the full raw network configuration. Set summary=true to trim to selected sections via include (basic, dhcp, ipv6, vpn, wan, all).\n\nmDNS field note: Whether mDNS is enabled for this network. Read-only and not authoritative: mDNS is configured site-wide on current UniFi Network versions, and this key only mirrors that site-wide scope \u2014 the mirror can go stale for hours, so treat the site-level setting as the source of truth (this server does not expose it). The controller accepts this field on the per-network write path but silently ignores it; unifi_update_network rejects it as read-only.\n\nExamples: <no args> (full raw); summary=true,include='basic' (minimal); summary=true,include='basic,dhcp' (adds DHCP server config); summary=true,include='all'.",
+      "description": "Get details for a specific network by ID. By default (summary=false) returns the full raw network configuration. Set summary=true to trim to selected sections via include (basic, dhcp, ipv6, vpn, wan, all).\n\nmDNS field note: Whether mDNS is enabled for this network. Read-only and not authoritative: mDNS is configured site-wide on current UniFi Network versions, and this key only mirrors that site-wide scope \u2014 the mirror can go stale for hours, so treat the site-level setting as the source of truth (unifi_get_mdns_settings and unifi_update_mdns_settings). The controller accepts this field on the per-network write path but silently ignores it; unifi_update_network rejects it as read-only.\n\nExamples: <no args> (full raw); summary=true,include='basic' (minimal); summary=true,include='basic,dhcp' (adds DHCP server config); summary=true,include='all'.",
       "name": "unifi_get_network_details",
       "schema": {
         "input": {
@@ -20009,7 +20009,7 @@
         "readOnlyHint": false
       },
       "auth_method": "local_only",
-      "description": "Update site-wide mDNS service mode, predefined services, or custom services. Pass only the fields you want to change \u2014 current values are automatically preserved. Each provided service list replaces the entire list. Mode 'all' requires both service lists empty; mode 'custom' requires at least one service. Network scope (enabled_for and enabled_for_network_ids) is read-only and preserved. Changes may affect service discovery. Requires confirmation.",
+      "description": "Update site-wide mDNS service mode, predefined services, custom services, or selected LAN network IDs. Pass only the fields you want to change \u2014 current values are automatically preserved. Each provided service list replaces the entire list. Mode 'all' requires both service lists empty; mode 'custom' requires at least one service. enabled_for remains read-only. When it is 'some', enabled_for_network_ids may replace the selected list with unique existing enabled gateway-routed LAN networkconf ObjectIDs from unifi_list_networks. These IDs are scoped to the legacy Network network tool family; do not use Integration API UUIDs. Changes may affect service discovery. Requires confirmation.",
       "name": "unifi_update_mdns_settings",
       "permission_action": "update",
       "permission_category": "system",
@@ -20021,7 +20021,7 @@
               "type": "boolean"
             },
             "update_data": {
-              "description": "Partial mDNS service settings: mode, predefined_services, custom_services only",
+              "description": "Partial mDNS settings: mode, predefined_services, custom_services, enabled_for_network_ids",
               "type": "object"
             }
           },

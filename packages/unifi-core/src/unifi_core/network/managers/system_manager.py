@@ -244,6 +244,44 @@ class SystemManager:
             logger.error("Failed to shape mDNS settings: %s", type(exc).__name__)
             raise RuntimeError("Failed to read mDNS settings") from None
 
+    async def _prepare_mdns_settings_update(self, update_data: Dict[str, Any]) -> tuple[dict, dict, dict]:
+        updates = mdns_to_controller_update(update_data)
+        before = await self._fresh_mdns_record()
+        merged = deepcopy(before)
+        merged.update(updates)
+        validate_mdns_service_selection(merged)
+        if "enabled_for_network_ids" in updates:
+            if before.get("enabled_for") != "some":
+                raise ValueError("Network IDs can be updated only when mDNS network scope is already 'some'.")
+            try:
+                networks = await self._connection.request(ApiRequest(method="get", path="/rest/networkconf"))
+                if not isinstance(networks, list) or any(not isinstance(row, dict) for row in networks):
+                    raise ValueError("invalid inventory")
+            except Exception as exc:
+                logger.error("Failed to validate mDNS network inventory: %s", type(exc).__name__)
+                raise RuntimeError("Cannot verify mDNS network inventory; no update attempted") from None
+            eligible = {
+                row.get("_id")
+                for row in networks
+                if isinstance(row.get("_id"), str)
+                and row.get("purpose") in {"corporate", "guest"}
+                and row.get("enabled", True) is not False
+                and row.get("ip_subnet")
+                and row.get("gateway_type", "default") != "switch"
+            }
+            if not set(updates["enabled_for_network_ids"]).issubset(eligible):
+                raise ValueError("mDNS network scope requires existing enabled gateway-routed LAN network IDs.")
+        return updates, before, merged
+
+    async def preview_mdns_settings_update(self, update_data: Dict[str, Any]) -> tuple[MdnsSettings, dict]:
+        """Validate the same fresh service/scope state used by confirmed updates."""
+        updates, before, _ = await self._prepare_mdns_settings_update(update_data)
+        try:
+            return mdns_from_controller(before), updates
+        except Exception as exc:
+            logger.error("Failed to shape mDNS preview: %s", type(exc).__name__)
+            raise RuntimeError("Cannot read mDNS settings for preview") from None
+
     async def update_mdns_settings(self, update_data: Dict[str, Any]) -> WriteVerificationResult:
         """Merge service fields into a fresh full record and verify the write."""
         updates = mdns_to_controller_update(update_data)
@@ -254,11 +292,8 @@ class SystemManager:
             raise RuntimeError("Updating mDNS settings requires Network session authentication") from None
         if not session_ready:
             raise RuntimeError("Updating mDNS settings requires Network session authentication")
-        before = await self._fresh_mdns_record()
-        merged = deepcopy(before)
-        merged.update(updates)
         try:
-            validate_mdns_service_selection(merged)
+            updates, before, merged = await self._prepare_mdns_settings_update(updates)
         except ValueError as exc:
             return failed_write(str(exc), operation="update_mdns_settings")
         try:
@@ -301,7 +336,11 @@ class SystemManager:
                 metadata={"outcome_uncertain": True},
             )
 
-        scope = {key: before[key] for key in ("enabled_for", "enabled_for_network_ids") if key in before}
+        scope = {
+            key: before[key]
+            for key in ("enabled_for", "enabled_for_network_ids")
+            if key in before and key not in updates
+        }
         result = verify_write(
             operation="update_mdns_settings",
             requested={**updates, **scope},

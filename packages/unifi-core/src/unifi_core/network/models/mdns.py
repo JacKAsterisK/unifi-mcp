@@ -1,7 +1,4 @@
-"""Typed site-wide mDNS service settings.
-
-Network membership is controller-owned and intentionally read-only here.
-"""
+"""Typed site-wide mDNS services and selected-network membership."""
 
 from __future__ import annotations
 
@@ -11,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError, field_validator
 
 ADDRESS_PATTERN = re.compile(r"^_[a-zA-Z0-9._-]+\._(tcp|udp)(\.local)?$")
-MUTABLE_FIELDS = frozenset({"mode", "predefined_services", "custom_services"})
+MUTABLE_FIELDS = frozenset({"mode", "predefined_services", "custom_services", "enabled_for_network_ids"})
 
 
 class PredefinedService(BaseModel):
@@ -61,7 +58,7 @@ class MdnsSettings(BaseModel):
     id: str | None = Field(default=None, json_schema_extra={"mutable": False})
     site_id: str | None = Field(default=None, json_schema_extra={"mutable": False})
     enabled_for: str | None = Field(default=None, json_schema_extra={"mutable": False})
-    enabled_for_network_ids: list[str] = Field(default_factory=list, json_schema_extra={"mutable": False})
+    enabled_for_network_ids: list[str] = Field(default_factory=list)
 
 
 class _MdnsUpdate(BaseModel):
@@ -69,6 +66,16 @@ class _MdnsUpdate(BaseModel):
     mode: StrictStr | None = None
     predefined_services: list[_WritePredefinedService] | None = None
     custom_services: list[_WriteCustomService] | None = None
+    enabled_for_network_ids: list[StrictStr] | None = None
+
+    @field_validator("enabled_for_network_ids")
+    @classmethod
+    def valid_network_ids(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and (
+            not value or len(set(value)) != len(value) or any(not re.fullmatch(r"[0-9a-f]{24}", item) for item in value)
+        ):
+            raise ValueError("invalid network IDs")
+        return value
 
     @field_validator("mode")
     @classmethod

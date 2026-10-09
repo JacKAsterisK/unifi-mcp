@@ -7442,7 +7442,7 @@
       "input_schema": {
         "properties": {
           "update_data": {
-            "description": "Partial mDNS service settings: mode, predefined_services, custom_services only",
+            "description": "Partial mDNS settings: mode, predefined_services, custom_services, enabled_for_network_ids",
             "type": "object"
           }
         },

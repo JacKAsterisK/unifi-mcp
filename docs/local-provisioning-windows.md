@@ -2,7 +2,9 @@
 
 This optional profile lets the Network MCP provision a VLAN, firewall policies,
 DHCP reservations, access-port profiles/assignment and an IPv4 WireGuard server without
-browser automation. The existing read-only profile remains separate.
+browser automation. It also supports the mDNS service settings and selected LAN
+network list through two explicitly allowed mDNS tools. Other system tools are
+excluded. The existing read-only profile remains separate.
 
 ## Configure a temporary writer
 

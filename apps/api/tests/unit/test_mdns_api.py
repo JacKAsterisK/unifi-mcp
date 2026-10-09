@@ -65,6 +65,8 @@ def test_action_override_and_translator():
     positional, keyword = translator({"update_data": {"mode": "custom", "custom_services": []}})
     assert positional == ()
     assert keyword == {"update_data": {"mode": "custom", "custom_services": []}}
+    selected = {"enabled_for_network_ids": ["a" * 24, "b" * 24]}
+    assert translator({"update_data": selected}) == ((), {"update_data": selected})
     for update in ({"enabled_for": "all"}, {"mode": "off"}, {"custom_services": "secret-value"}):
         with pytest.raises(ValueError) as exc:
             translator({"update_data": update})

@@ -597,7 +597,7 @@ The developer supplies only a client-generated public key. Gateway peer
 | Tool | Type | Description |
 |------|------|-------------|
 | `unifi_get_autobackup_settings` | Read | Get auto-backup settings (enabled state, schedule, retention count, cloud backup). |
-| `unifi_get_mdns_settings` | Read | Get site-wide mDNS service settings and read-only network scope. |
+| `unifi_get_mdns_settings` | Read | Get site-wide mDNS service settings and selected LAN network scope. |
 | `unifi_get_mgmt_settings` | Read | Get the site's device management (mgmt) settings, read-only: device SSH state and user name, password-auth flag, authorised-key count, wh... |
 | `unifi_get_network_health` | Read | Returns per-subsystem health status for WAN, LAN, WLAN, and VPN — each with status, number of gateways/switches/APs, and active user counts. |
 | `unifi_get_site_settings` | Read | Get current site settings: site identity, regulatory country code, timezone, connectivity monitor (enabled, uplink type) and NTP servers. |
@@ -609,7 +609,7 @@ The developer supplies only a client-generated public key. Gateway peer
 | `unifi_create_backup` | Mutate | Create a new backup of the controller configuration. |
 | `unifi_delete_backup` | Mutate | Delete a backup file from the controller. |
 | `unifi_update_autobackup_settings` | Mutate | Update auto-backup settings. |
-| `unifi_update_mdns_settings` | Mutate | Update site-wide mDNS service mode, predefined services, or custom services. |
+| `unifi_update_mdns_settings` | Mutate | Update site-wide mDNS service mode, predefined services, custom services, or selected LAN network IDs. |
 | `unifi_update_snmp_settings` | Mutate | Update SNMP settings for the site: v1/v2c (enabled, community) and SNMPv3 (enabled_v3, username, x_password). |
 | `unifi_update_threat_management_settings` | Mutate | Update site-wide IPS mode/category selection or traffic identification settings and verify persistence. |
 <!-- /AUTO:tools:system,config -->

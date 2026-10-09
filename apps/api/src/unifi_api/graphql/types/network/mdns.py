@@ -22,7 +22,7 @@ class CustomService:
     address: str | None
 
 
-@strawberry.type(description="Site-wide mDNS services; network scope is read-only.")
+@strawberry.type(description="Site-wide mDNS services and selected LAN network scope; enabled_for is read-only.")
 class MdnsSettings:
     id: strawberry.ID | None
     site_id: str | None

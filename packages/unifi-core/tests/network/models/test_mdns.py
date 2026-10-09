@@ -56,6 +56,77 @@ def test_read_and_list_replacement():
     }
 
 
+@pytest.mark.parametrize("ids", [[], ["not-an-object-id"], ["a" * 24, "a" * 24], [42], "a" * 24, None])
+def test_selected_network_ids_are_strict_unique_object_ids(ids):
+    with pytest.raises(ValueError):
+        mdns_to_controller_update({"enabled_for_network_ids": ids})
+
+
+@pytest.mark.asyncio
+async def test_scope_update_preserves_services_unknown_fields_and_verifies_new_membership():
+    before = {**deepcopy(RECORD), "enabled_for_network_ids": ["a" * 24]}
+    wanted = ["a" * 24, "b" * 24]
+    after = {**deepcopy(before), "enabled_for_network_ids": wanted}
+    networks = [{"_id": item, "purpose": "corporate", "enabled": True, "ip_subnet": "10.0.1.1/24"} for item in wanted]
+    manager, conn = manager_and_connection([[before], networks, [], [after]])
+    result = await manager.update_mdns_settings({"enabled_for_network_ids": wanted})
+    assert result.success and result.mutation_applied
+    assert result.persisted_fields == ("enabled_for_network_ids",)
+    assert conn.request.call_args_list[1].args[0].path == "/rest/networkconf"
+    sent = conn.request.call_args_list[2].args[0].data
+    assert sent == after
+    assert before["enabled_for_network_ids"] == ["a" * 24]
+    assert conn.request.await_count == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["all", "none", None])
+async def test_scope_list_cannot_change_scope_selector(scope):
+    before = {**deepcopy(RECORD), "enabled_for": scope}
+    manager, conn = manager_and_connection([[before]])
+    result = await manager.update_mdns_settings({"enabled_for_network_ids": ["a" * 24]})
+    assert not result.success and result.mutation_applied is False
+    assert conn.request.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("record", [None, {"purpose": "wan"}, {"enabled": False}, {"gateway_type": "switch"}])
+async def test_unknown_or_ineligible_network_rejected_before_write(record):
+    networks = (
+        []
+        if record is None
+        else [{"_id": "a" * 24, "purpose": "corporate", "enabled": True, "ip_subnet": "10.0.1.1/24", **record}]
+    )
+    manager, conn = manager_and_connection([[deepcopy(RECORD)], networks])
+    result = await manager.update_mdns_settings({"enabled_for_network_ids": ["a" * 24]})
+    assert not result.success and result.mutation_applied is False
+    assert all(call.args[0].method == "get" for call in conn.request.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_scope_silent_drop_does_not_verify_against_old_preserved_membership():
+    before = {**deepcopy(RECORD), "enabled_for_network_ids": ["a" * 24]}
+    wanted = ["a" * 24, "b" * 24]
+    networks = [{"_id": item, "purpose": "corporate", "ip_subnet": "10.0.1.1/24"} for item in wanted]
+    manager, conn = manager_and_connection([[before], networks, [], [deepcopy(before)]])
+    result = await manager.update_mdns_settings({"enabled_for_network_ids": wanted})
+    assert not result.success and result.mutation_applied is True
+    assert "enabled_for_network_ids" in result.dropped_fields
+    assert sum(call.args[0].method == "put" for call in conn.request.call_args_list) == 1
+
+
+@pytest.mark.asyncio
+async def test_scope_preview_uses_fresh_inventory_and_never_writes():
+    before = deepcopy(RECORD)
+    networks = [{"_id": "a" * 24, "purpose": "corporate", "ip_subnet": "10.0.1.1/24"}]
+    manager, conn = manager_and_connection([[before], networks])
+    view, updates = await manager.preview_mdns_settings_update({"enabled_for_network_ids": ["a" * 24]})
+    assert view.enabled_for_network_ids == ["n1", "n2"]
+    assert updates["enabled_for_network_ids"] == ["a" * 24]
+    assert conn.request.await_count == 2
+    assert all(call.args[0].method == "get" for call in conn.request.call_args_list)
+
+
 def test_read_tolerates_new_and_legacy_nested_shapes_but_write_stays_strict():
     raw = deepcopy(RECORD)
     raw["predefined_services"] = [{"code": "printers", "enabled": True}]

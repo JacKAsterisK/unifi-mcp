@@ -14,6 +14,8 @@ from readonly_launcher import TOOLS as READ_TOOLS
 from readonly_launcher import child_environment as readonly_environment
 
 TOOLS = READ_TOOLS + (
+    "unifi_get_mdns_settings",
+    "unifi_update_mdns_settings",
     "unifi_list_wireguard_peers",
     "unifi_create_wireguard_server",
     "unifi_create_wireguard_peer",
@@ -45,6 +47,7 @@ TOOLS = READ_TOOLS + (
     "unifi_set_switch_port_profile",
 )
 ALLOWED_ACTIONS = {
+    "SYSTEM": ("UPDATE",),
     "VPN_SERVERS": ("CREATE", "UPDATE", "DELETE"),
     "NETWORKS": ("CREATE", "UPDATE", "DELETE"),
     "FIREWALL_POLICIES": ("CREATE", "UPDATE", "DELETE"),

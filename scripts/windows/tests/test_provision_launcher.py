@@ -41,7 +41,7 @@ def test_writer_uses_pin_confirm_direct_allowlist_and_only_scoped_policy_excepti
     assert env["UNIFI_NETWORK_TLS_SHA256"] == "00" * 32
     assert env["UNIFI_POLICY_UPDATE"] == "false"
     assert env["UNIFI_POLICY_NETWORK_VPN_SERVERS_CREATE"] == "true"
-    assert "UNIFI_POLICY_NETWORK_SYSTEM_UPDATE" not in env
+    assert env["UNIFI_POLICY_NETWORK_SYSTEM_UPDATE"] == "true"
     assert "HTTPS_PROXY" not in env and "PYTHONPATH" not in env
     assert env["UNIFI_NETWORK_API_KEY"] == CREDENTIALS["api_key"]
     assert env["UNIFI_STRICT_ENABLED_TOOLS"] == "true"
@@ -72,7 +72,14 @@ def test_every_allowed_write_has_matching_scoped_policy_and_registered_schema():
             tool = entries[name]
             if not tool["annotations"]["readOnlyHint"]:
                 assert checker.check(tool["permission_category"], tool["permission_action"])
-        assert checker.check("system", "update") is False
+        assert checker.check("system", "update") is True
+        assert [
+            name
+            for name in launcher.TOOLS
+            if not entries[name]["annotations"]["readOnlyHint"] and entries[name]["permission_category"] == "system"
+        ] == ["unifi_update_mdns_settings"]
+        assert "unifi_update_site_settings" not in launcher.TOOLS
+        assert "unifi_reboot_device" not in launcher.TOOLS
         assert checker.check("switch", "create") is True
         assert checker.check("switch", "delete") is True
         assert checker.check("clients", "delete") is False

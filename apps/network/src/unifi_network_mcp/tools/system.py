@@ -11,7 +11,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field, WithJsonSchema
 
 from unifi_core.confirmation import create_preview, delete_preview, update_preview
-from unifi_core.network.models.mdns import mdns_to_controller_update, validate_mdns_service_selection
+from unifi_core.network.models.mdns import mdns_to_controller_update
 from unifi_core.network.models.system import (
     autobackup_to_controller_update,
     backup_from_controller,
@@ -42,7 +42,7 @@ logger.info("System tools module loaded, server instance: %s", server)
 @server.tool(
     name="unifi_get_mdns_settings",
     auth="local_only",
-    description="Get site-wide mDNS service settings and read-only network scope.",
+    description="Get site-wide mDNS service settings and selected LAN network scope.",
     annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
 )
 async def get_mdns_settings() -> Dict[str, Any]:
@@ -61,11 +61,13 @@ async def get_mdns_settings() -> Dict[str, Any]:
     name="unifi_update_mdns_settings",
     auth="local_only",
     description=(
-        "Update site-wide mDNS service mode, predefined services, or custom services. "
+        "Update site-wide mDNS service mode, predefined services, custom services, or selected LAN network IDs. "
         "Pass only the fields you want to change — current values are automatically preserved. "
         "Each provided service list replaces the entire list. "
         "Mode 'all' requires both service lists empty; mode 'custom' requires at least one service. "
-        "Network scope (enabled_for and enabled_for_network_ids) is read-only and preserved. "
+        "enabled_for remains read-only. When it is 'some', enabled_for_network_ids may replace the selected list "
+        "with unique existing enabled gateway-routed LAN networkconf ObjectIDs from unifi_list_networks. "
+        "These IDs are scoped to the legacy Network network tool family; do not use Integration API UUIDs. "
         "Changes may affect service discovery. Requires confirmation."
     ),
     permission_category="system",
@@ -75,7 +77,7 @@ async def get_mdns_settings() -> Dict[str, Any]:
 async def update_mdns_settings(
     update_data: Annotated[
         Dict[str, Any],
-        Field(description="Partial mDNS service settings: mode, predefined_services, custom_services only"),
+        Field(description="Partial mDNS settings: mode, predefined_services, custom_services, enabled_for_network_ids"),
     ],
     confirm: Annotated[bool, Field(description="Apply update when true; preview when false")] = False,
 ) -> Dict[str, Any]:
@@ -85,11 +87,8 @@ async def update_mdns_settings(
         return {"success": False, "error": str(exc)}
     if not confirm:
         try:
-            current = (await system_manager.get_mdns_settings()).model_dump()
-            try:
-                validate_mdns_service_selection({**current, **updates})
-            except ValueError as exc:
-                return {"success": False, "error": str(exc)}
+            current_model, updates = await system_manager.preview_mdns_settings_update(updates)
+            current = current_model.model_dump()
             return redact_sensitive_fields(
                 update_preview(
                     resource_type="mdns_settings",
@@ -97,10 +96,14 @@ async def update_mdns_settings(
                     resource_name="mDNS Settings",
                     current_state=current,
                     updates=updates,
-                    warnings=["Changes may affect service discovery; network scope is preserved."],
+                    warnings=[
+                        "Changes may affect service discovery; each supplied list replaces its entire current list."
+                    ],
                 ),
                 redact_sensitive=should_redact_sensitive_fields(),
             )
+        except ValueError as exc:
+            return {"success": False, "error": str(exc)}
         except Exception as exc:
             logger.error("Failed to prepare mDNS preview: %s", type(exc).__name__)
             return {"success": False, "error": "Failed to prepare mDNS settings preview"}
