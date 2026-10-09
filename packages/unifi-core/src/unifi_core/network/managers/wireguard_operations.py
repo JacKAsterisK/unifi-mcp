@@ -162,6 +162,10 @@ class WireGuardOperations:
                 if len(matches) != 1 or not matches[0].get("_id"):
                     raise WireGuardError("Created server cannot be uniquely identified")
                 after = matches[0]
+                public_view = server_view(after)
+                verification_state = {key: value for key, value in after.items() if key != "wireguard_public_key"}
+                if "wireguard_public_key" in public_view:
+                    verification_state["wireguard_public_key"] = public_view["wireguard_public_key"]
                 requested = {**payload, "wireguard_public_key": public_key}
                 if after.get("ipv6_subnet"):
                     return failed_write(
@@ -172,9 +176,12 @@ class WireGuardOperations:
                     )
                 return replace(
                     verify_write(
-                        operation="create", requested=requested, after=after, absent_value_defaults={"ipv6_subnet": ""}
+                        operation="create",
+                        requested=requested,
+                        after=verification_state,
+                        absent_value_defaults={"ipv6_subnet": ""},
                     ),
-                    resource=server_view(after),
+                    resource=public_view,
                 )
 
             return await self._wg_write_once(

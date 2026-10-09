@@ -30,6 +30,7 @@ from unifi_core.network.models.vpn import (
     is_vpn_network,
     validate_alternate_address_update,
 )
+from unifi_core.network.models.wireguard import server_public_key
 from unifi_core.write_verification import WriteVerificationResult, failed_write, noop_write, verify_write
 
 logger = logging.getLogger("unifi-network-mcp")
@@ -169,7 +170,18 @@ class VpnManager(WireGuardOperations):
         Returns:
             List of VPN server configuration dictionaries
         """
-        return await self.get_vpn_configs(include_clients=False, include_servers=True)
+        records = await self.get_vpn_configs(include_clients=False, include_servers=True)
+        projected = []
+        for record in records:
+            if record.get("vpn_type") != "wireguard-server":
+                projected.append(record)
+                continue
+            public = server_public_key(record)
+            view = {key: value for key, value in record.items() if key != "wireguard_public_key"}
+            if public is not None:
+                view["wireguard_public_key"] = public
+            projected.append(view)
+        return projected
 
     async def get_vpn_client_details(self, client_id: str) -> Dict[str, Any]:
         """Get detailed information for a specific VPN client.

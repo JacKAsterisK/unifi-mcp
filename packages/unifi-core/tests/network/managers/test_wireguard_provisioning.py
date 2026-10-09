@@ -12,8 +12,11 @@ from unifi_core.network.models.wireguard import (
     WireGuardError,
     WireGuardPeerCreate,
     WireGuardServerCreate,
+    server_public_key,
+    server_view,
     validate_input,
 )
+from unifi_core.redaction import redact_sensitive_fields
 
 SECRET = "controller-only-secret-that-must-never-escape"
 KEY = base64.b64encode(bytes(range(32))).decode()
@@ -42,6 +45,8 @@ def controller():
     conn.read_error_after_write = False
     conn.did_write = False
     conn.dropped = None
+    conn.store_public_key = False
+    conn.override_private_key = None
 
     async def request(req):
         if req.method == "get":
@@ -60,7 +65,10 @@ def controller():
         if req.path == "/rest/networkconf":
             raw = {"_id": "server", **deepcopy(req.data), "opaque": SECRET}
             private = X25519PrivateKey.from_private_bytes(base64.b64decode(raw["x_wireguard_private_key"]))
-            raw["wireguard_public_key"] = base64.b64encode(private.public_key().public_bytes_raw()).decode()
+            if conn.store_public_key:
+                raw["wireguard_public_key"] = base64.b64encode(private.public_key().public_bytes_raw()).decode()
+            if conn.override_private_key is not None:
+                raw["x_wireguard_private_key"] = conn.override_private_key
             conn.networks.append(raw)
             if conn.dropped:
                 raw.pop(conn.dropped, None)
@@ -121,13 +129,80 @@ async def test_server_preflight_rejects_collisions_without_writes(controller, co
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("field", ["enabled", "local_port", "wireguard_public_key", "firewall_zone_id"])
+@pytest.mark.parametrize("field", ["enabled", "local_port", "x_wireguard_private_key", "firewall_zone_id"])
 async def test_server_silent_field_drop_cannot_report_success(controller, field):
     controller.dropped = field
     result = await VpnManager(controller).create_wireguard_server(SERVER_INPUT)
     assert result.success is False
-    assert field in result.dropped_fields
+    assert ("wireguard_public_key" if field == "x_wireguard_private_key" else field) in result.dropped_fields
     assert SECRET not in repr(result)
+
+
+@pytest.mark.asyncio
+async def test_create_also_accepts_controller_with_consistent_public_and_private_fields(controller):
+    controller.store_public_key = True
+    result = await VpnManager(controller).create_wireguard_server(SERVER_INPUT)
+    assert result.success
+    assert result.resource["wireguard_public_key"] == controller.networks[-1]["wireguard_public_key"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored", [KEY, SECRET, None])
+async def test_missing_malformed_or_changed_stored_private_key_cannot_verify_expected_key(controller, stored, caplog):
+    controller.override_private_key = stored
+    if stored is None:
+        controller.dropped = "x_wireguard_private_key"
+    result = await VpnManager(controller).create_wireguard_server(SERVER_INPUT)
+    assert not result.success
+    assert "wireguard_public_key" in result.dropped_fields + result.coerced_fields
+    assert SECRET not in repr(result) + caplog.text
+    if stored is not None:
+        assert stored not in repr(result) + caplog.text
+    assert sum(call.args[0].method == "post" for call in controller.request.call_args_list) == 1
+
+
+def test_private_only_public_projection_matches_rfc7748_vector_without_mutating_or_exposing_record():
+    # RFC 7748 section 6.1: Alice's X25519 private/public pair.
+    private = base64.b64encode(
+        bytes.fromhex("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
+    ).decode()
+    public = base64.b64encode(
+        bytes.fromhex("8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a")
+    ).decode()
+    record = {**SERVER, "x_wireguard_private_key": private}
+    original = deepcopy(record)
+    assert server_public_key(record) == public
+    view = server_view(record)
+    assert view["wireguard_public_key"] == public
+    assert private not in repr(view)
+    assert SECRET not in repr(view)
+    assert record == original
+    assert server_public_key({"wireguard_public_key": public}) == public
+    assert server_public_key({**record, "wireguard_public_key": KEY}) is None
+
+
+@pytest.mark.parametrize("private", [SECRET, "***REDACTED***", KEY[:-1], base64.b64encode(b"short").decode(), 42, {}])
+def test_malformed_private_projection_does_not_fall_back_to_an_unverified_public_value(private):
+    view = server_view({**SERVER, "x_wireguard_private_key": private, "wireguard_public_key": KEY})
+    assert "wireguard_public_key" not in view
+    assert "x_wireguard_private_key" not in view
+    assert SECRET not in repr(view)
+
+
+@pytest.mark.asyncio
+async def test_vpn_server_inventory_exposes_derived_public_before_existing_secret_redaction(controller, caplog):
+    controller.get_cached.return_value = None
+    controller.networks.append(
+        {**{key: value for key, value in SERVER.items() if key != "opaque"}, "x_wireguard_private_key": KEY}
+    )
+    original = deepcopy(controller.networks)
+    result = await VpnManager(controller).get_vpn_servers()
+    assert result[0]["wireguard_public_key"] == server_public_key(controller.networks[-1])
+    assert controller.networks == original
+    public_result = redact_sensitive_fields(result)
+    assert KEY not in repr(public_result) + caplog.text
+    assert SECRET not in repr(public_result) + caplog.text
+    assert public_result[0]["wireguard_public_key"] == result[0]["wireguard_public_key"]
 
 
 @pytest.mark.asyncio

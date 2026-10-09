@@ -6,6 +6,7 @@ import re
 from copy import deepcopy
 from typing import Any, Literal
 
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
@@ -129,9 +130,39 @@ def input_schema(model: type[ClosedInput]) -> dict:
     return resolve(schema)
 
 
+def server_public_key(record: dict) -> str | None:
+    """Project a public key from persisted controller material, never a secret.
+
+    Network 10.6.106 stores only x_wireguard_private_key. Derive its public
+    counterpart before response redaction. A malformed or inconsistent record
+    has no verifiable public key; never fall back to an expected create value.
+    """
+    stored_public = record.get("wireguard_public_key")
+    private = record.get("x_wireguard_private_key")
+    try:
+        if private is not None:
+            decoded = base64.b64decode(private, validate=True)
+            if len(decoded) != 32 or base64.b64encode(decoded).decode("ascii") != private:
+                return None
+            derived = base64.b64encode(
+                X25519PrivateKey.from_private_bytes(decoded).public_key().public_bytes_raw()
+            ).decode("ascii")
+            return derived if stored_public is None or stored_public == derived else None
+        decoded = base64.b64decode(stored_public, validate=True)
+        if len(decoded) == 32 and decoded != bytes(32) and base64.b64encode(decoded).decode("ascii") == stored_public:
+            return stored_public
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
 def server_view(record: dict) -> dict:
-    keys = ("_id", "name", "ip_subnet", "local_port", "wireguard_interface", "wireguard_public_key", "firewall_zone_id")
-    return {**{key: record[key] for key in keys if key in record}, "enabled": record.get("enabled", True)}
+    keys = ("_id", "name", "ip_subnet", "local_port", "wireguard_interface", "firewall_zone_id")
+    view = {**{key: record[key] for key in keys if key in record}, "enabled": record.get("enabled", True)}
+    public = server_public_key(record)
+    if public is not None:
+        view["wireguard_public_key"] = public
+    return view
 
 
 def peer_view(record: dict) -> dict:
