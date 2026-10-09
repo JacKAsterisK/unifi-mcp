@@ -216,6 +216,47 @@ def test_reuse_login_checks_target_acl_and_decryption_without_leaking_secrets(tm
     )
     assert inline.returncode == standalone.returncode == (1 if scenario == "unsafe-acl" else 0)
     assert all(value.encode() not in inline.stdout + inline.stderr for value in CREDENTIALS.values())
+    # Exercise cmd -> batch -> PowerShell -File, without prompt overrides or writes.
+    batch_check = subprocess.run(
+        [
+            os.environ["COMSPEC"],
+            "/d",
+            "/c",
+            str(launcher.ROOT / "setup-provision.bat"),
+            "-ControllerHost",
+            "127.0.0.1",
+            "-TrustedTlsSha256",
+            "00" * 32,
+            "-ProfileDirectory",
+            str(writer),
+            "-ReuseReadOnlyLogin",
+            "-IncludeApiKey",
+            "-ValidateStoredLogin",
+        ],
+        env={**os.environ, "LOCALAPPDATA": str(tmp_path)},
+        capture_output=True,
+        timeout=30,
+    )
+    assert batch_check.returncode == (0 if scenario == "valid" else 1)
+    assert not writer.exists()
+    assert (source / "credential.dpapi").read_bytes() == original
+    assert all(value.encode() not in batch_check.stdout + batch_check.stderr for value in CREDENTIALS.values())
+    if scenario == "valid":
+        assert b"Stored login validated" in batch_check.stdout
+        # Explicit private paths must work even when AppData resolves elsewhere.
+        override_check = subprocess.run(
+            [*batch_check.args, "-ReadOnlyProfileDirectory", str(source)],
+            env={**os.environ, "LOCALAPPDATA": str(tmp_path / "different-appdata")},
+            capture_output=True,
+            timeout=30,
+        )
+        assert override_check.returncode == 0
+        assert not writer.exists()
+        assert all(
+            value.encode() not in override_check.stdout + override_check.stderr for value in CREDENTIALS.values()
+        )
+    elif scenario == "unsafe-acl":
+        assert b"grants access to another account or group" in batch_check.stdout + batch_check.stderr
     command = rf"""
     $env:LOCALAPPDATA = '{private_root}'
     function Get-Credential {{ throw 'Unexpected password prompt' }}

@@ -2,17 +2,22 @@ param(
     [string]$ControllerHost,
     [int]$ControllerPort = 443,
     [string]$ProfileDirectory = (Join-Path $env:LOCALAPPDATA 'UniFiMCP\provision'),
+    [string]$ReadOnlyProfileDirectory = (Join-Path $env:LOCALAPPDATA 'UniFiMCP\readonly'),
     [string]$TrustedTlsSha256,
     [ValidateRange(1,8)][int]$LifetimeHours = 2,
     [switch]$IncludeApiKey,
-    [switch]$ReuseReadOnlyLogin
+    [switch]$ReuseReadOnlyLogin,
+    [switch]$ValidateStoredLogin
 )
 $ErrorActionPreference = 'Stop'
 $env:PSModulePath = $PSHOME + '\Modules'
+if ($ValidateStoredLogin -and -not $ReuseReadOnlyLogin) { throw 'ValidateStoredLogin requires ReuseReadOnlyLogin.' }
+if ($ValidateStoredLogin) { Write-Host ('Runtime: Windows PowerShell {0}; language mode {1}.' -f $PSVersionTable.PSVersion, $ExecutionContext.SessionState.LanguageMode) }
 Add-Type -AssemblyName System.Security
 $repoDirectory = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $profilePath = [IO.Path]::GetFullPath($ProfileDirectory)
-$readonlyPath = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'UniFiMCP\readonly'))
+$readonlyPath = [IO.Path]::GetFullPath($ReadOnlyProfileDirectory)
+if ($ValidateStoredLogin) { Write-Host ('Read-only profile: ' + $readonlyPath) }
 if ($profilePath.Equals($readonlyPath, [StringComparison]::OrdinalIgnoreCase) -or $profilePath.Equals($repoDirectory, [StringComparison]::OrdinalIgnoreCase) -or $profilePath.StartsWith($repoDirectory + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Use a separate private provisioning directory outside the repository.' }
 if (-not $ControllerHost) { $ControllerHost = Read-Host 'Local UniFi controller hostname or IP' }
 if ($ControllerHost -notmatch '^[A-Za-z0-9._-]+$' -or $ControllerPort -lt 1 -or $ControllerPort -gt 65535) { throw 'Invalid controller address or port.' }
@@ -30,7 +35,7 @@ if (Test-Path -LiteralPath $profilePath) {
 }
 $credential = $null
 if ($ReuseReadOnlyLogin) {
-    $validProfile = & (Join-Path $PSScriptRoot 'verify_private_profile.ps1') -ProfileDirectory $readonlyPath -PassThru
+    $validProfile = & (Join-Path $PSScriptRoot 'verify_private_profile.ps1') -ProfileDirectory $readonlyPath -PassThru -ExplainFailure
     if ($validProfile -ne $true) { throw 'Existing login profile is missing or has unsafe permissions.' }
     $sourceBytes = $null
     $sourceLogin = $null
@@ -51,6 +56,10 @@ if ($ReuseReadOnlyLogin) {
     $credential = Get-Credential -Message 'Local UniFi account with Network write access for reviewed provisioning'
 }
 if (-not $credential) { throw 'No credential entered.' }
+if ($ValidateStoredLogin) {
+    Write-Host 'Stored login validated. No profile files were written and no gateway connection was made.'
+    return
+}
 $apiSecret = $null
 if ($IncludeApiKey) { $apiSecret = Read-Host 'Network Integration API key (needed for firewall zone CRUD and ordering)' -AsSecureString }
 $accountSid = [Security.Principal.WindowsIdentity]::GetCurrent().User

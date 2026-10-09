@@ -31,6 +31,16 @@ or the UniFi account's role. An Integration key is still prompted securely with
 one UniFi account between profiles, the inventory account loses its independent
 controller-enforced View Only boundary until you restore that role.
 
+To diagnose stored-login reuse, add `-ValidateStoredLogin` to the same command
+with `-ReuseReadOnlyLogin`. This checks permissions, the controller target and
+DPAPI decryption, then exits before the API-key prompt or any profile writes.
+No gateway connection is made. Permission failures report the file category,
+operation and exception class without printing credential contents. The batch
+launcher uses the inbox Windows PowerShell executable regardless of `PATH`.
+If the profile is stored elsewhere, supply `-ReadOnlyProfileDirectory` with its
+private directory and `-ProfileDirectory` with the separate writer directory.
+Both paths are explicit and do not depend on the process's AppData location.
+
 Setup stores credentials using Windows CurrentUser DPAPI and restricts the
 profile to the current Windows user and SYSTEM. It makes no gateway connection
 and does not edit Codex configuration. The default lifetime is two hours;
