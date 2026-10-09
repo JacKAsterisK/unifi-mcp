@@ -25,7 +25,7 @@ from aiounifi.models.configuration import Configuration
 from unifi_core.auth import AuthenticationStatus, UniFiAuth
 from unifi_core.exceptions import UniFiAuthError
 from unifi_core.mac import mask_exception_macs, mask_macs
-from unifi_core.network.transport import controller_origin, controller_tls, sdk_tls
+from unifi_core.network.transport import controller_origin, controller_tls, no_retry_controller_write, sdk_tls
 from unifi_core.redaction import collect_secret_values, sanitize_exception, scrub_secret_values
 from unifi_core.support_bundle import (
     ConnectivityProbe,
@@ -88,6 +88,14 @@ class SettingsControllerRejection(RequestError):
             raise ValueError("Invalid controller error code")
         self.code = code
         super().__init__("Controller settings request rejected.")
+
+
+class IntegrationRequestError(RuntimeError):
+    """Fixed safe context at the Network Integration transport boundary."""
+
+    def __init__(self, message: str, http_status: int | None = None):
+        self.http_status = http_status
+        super().__init__(message)
 
 
 def response_status(exc: BaseException) -> Optional[int]:
@@ -777,40 +785,75 @@ class ConnectionManager:
 
     async def request_integration(self, path: str, params: dict | None = None) -> dict:
         """Bounded public inventory GET; never reuse cookies or forward redirects."""
-        if not self.unifi_auth.has_api_key:
+        try:
+            return await self.request_integration_api("GET", path, params=params)
+        except RuntimeError as error:
+            # The shared transport supplies fixed safe text, never response bodies.
+            raise UniFiAuthError(str(error)) from None
+
+    async def request_integration_api(
+        self,
+        method: str,
+        path: str,
+        params: dict | None = None,
+        data: dict | None = None,
+        *,
+        auth: UniFiAuth | None = None,
+    ) -> dict:
+        """One pinned, origin-bound Integration transport for reads and writes.
+
+        Domain managers may supply their existing API-key provider. Transport
+        policy always belongs to this connection; cookies and redirects are
+        excluded, and uncertain writes are never automatically replayed.
+        """
+        credentials = auth if auth is not None else self.unifi_auth
+        if not credentials.has_api_key:
             raise UniFiAuthError("Network Integration API requires UNIFI_NETWORK_API_KEY or UNIFI_API_KEY.")
-        if not path.startswith("/v1/") or ".." in path or "?" in path or "#" in path:
+        method = method.upper()
+        if method not in {"GET", "POST", "PUT", "DELETE"}:
+            raise ValueError("Unsupported Network Integration API method")
+        if not re.fullmatch(r"/v1/[A-Za-z0-9_./-]+", path) or ".." in path:
             raise ValueError("Invalid Network Integration API path")
         prefix = self._integration_prefix if self._integration_prefix is not None else "/proxy/network"
         try:
-            async with await self.unifi_auth.get_api_key_session(
+            async with await credentials.get_api_key_session(
                 cookie_jar=aiohttp.DummyCookieJar(),
                 timeout=aiohttp.ClientTimeout(total=10),
                 connector=aiohttp.TCPConnector(ssl=self._tls),
-                middlewares=(controller_origin(self.url_base),),
+                middlewares=(controller_origin(self.url_base), no_retry_controller_write),
             ) as session:
-                async with session.get(
+                async with session.request(
+                    method,
                     f"{self.url_base}{prefix}/integration{path}",
                     params=params,
+                    json=data,
                     ssl=self._tls,
                     allow_redirects=False,
                 ) as response:
                     if response.status == 429:
                         raise AuthenticationRateLimitError("Network Integration API rate limited; retry later.")
-                    if response.status != 200:
-                        raise UniFiAuthError(
-                            f"Network Integration API read failed (HTTP {response.status}); "
-                            "verify API-key permissions and controller support."
+                    if not 200 <= response.status < 300 or (method == "GET" and response.status != 200):
+                        raise IntegrationRequestError(
+                            f"Network Integration API request failed (HTTP {response.status}); "
+                            "verify API-key permissions and controller support.",
+                            http_status=response.status,
                         )
+                    if response.status == 204:
+                        return {}
                     body = await response.json()
                     if not isinstance(body, dict):
-                        raise UniFiAuthError("Network Integration API returned an invalid response.")
+                        raise IntegrationRequestError("Network Integration API returned an invalid response.")
                     return body
-        except (UniFiAuthError, AuthenticationRateLimitError):
+        except (IntegrationRequestError, AuthenticationRateLimitError):
             raise
         except Exception as error:
-            raise UniFiAuthError(
-                f"Network Integration API read failed ({type(error).__name__}); verify controller connectivity."
+            guidance = (
+                "verify controller connectivity."
+                if method == "GET"
+                else "write outcome is unknown; inspect live state before retrying."
+            )
+            raise IntegrationRequestError(
+                f"Network Integration API request failed ({type(error).__name__}); {guidance}"
             ) from None
 
     async def integration_pages(self, path: str) -> list[dict]:

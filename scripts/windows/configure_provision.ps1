@@ -4,7 +4,8 @@ param(
     [string]$ProfileDirectory = (Join-Path $env:LOCALAPPDATA 'UniFiMCP\provision'),
     [string]$TrustedTlsSha256,
     [ValidateRange(1,8)][int]$LifetimeHours = 2,
-    [switch]$IncludeApiKey
+    [switch]$IncludeApiKey,
+    [switch]$ReuseReadOnlyLogin
 )
 $ErrorActionPreference = 'Stop'
 $env:PSModulePath = $PSHOME + '\Modules'
@@ -27,7 +28,29 @@ if (Test-Path -LiteralPath $profilePath) {
     $existingSettings = Join-Path $profilePath 'settings.json'
     if (-not (Test-Path -LiteralPath $existingSettings) -or (Get-Content -LiteralPath $existingSettings -Raw | ConvertFrom-Json).profile_kind -cne 'provision') { throw 'Refusing to overwrite a different credential profile.' }
 }
-$credential = Get-Credential -Message 'Separate local UniFi account with Network write access for reviewed provisioning'
+$credential = $null
+if ($ReuseReadOnlyLogin) {
+    $checker = Join-Path $env:SYSTEMROOT 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    & $checker -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'verify_private_profile.ps1') $readonlyPath
+    if ($LASTEXITCODE -ne 0) { throw 'Existing login profile is missing or has unsafe permissions.' }
+    $sourceBytes = $null
+    $sourceLogin = $null
+    try {
+        $sourceSettings = Get-Content -LiteralPath (Join-Path $readonlyPath 'settings.json') -Raw | ConvertFrom-Json
+        if ($sourceSettings.host -cne $ControllerHost -or $sourceSettings.port -ne $ControllerPort -or $sourceSettings.tls_sha256.Replace(':','') -ine $pin -or $sourceSettings.site -cne 'default') { throw 'Profile targets differ.' }
+        $encryptedLogin = [Convert]::FromBase64String([IO.File]::ReadAllText((Join-Path $readonlyPath 'credential.dpapi')))
+        $sourceBytes = [Security.Cryptography.ProtectedData]::Unprotect($encryptedLogin, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+        $sourceLogin = [Text.Encoding]::UTF8.GetString($sourceBytes) | ConvertFrom-Json
+        if (-not ($sourceLogin.username -is [string]) -or -not $sourceLogin.username -or -not ($sourceLogin.password -is [string]) -or -not $sourceLogin.password) { throw 'Incomplete login.' }
+        $credential = [PSCredential]::new($sourceLogin.username, (ConvertTo-SecureString $sourceLogin.password -AsPlainText -Force))
+    } catch { throw 'Could not reuse the encrypted login. Check the Windows user, controller and certificate pin.' }
+    finally {
+        if ($sourceBytes) { [Array]::Clear($sourceBytes, 0, $sourceBytes.Length) }
+        $sourceLogin = $null
+    }
+} else {
+    $credential = Get-Credential -Message 'Local UniFi account with Network write access for reviewed provisioning'
+}
 if (-not $credential) { throw 'No credential entered.' }
 $apiSecret = $null
 if ($IncludeApiKey) { $apiSecret = Read-Host 'Network Integration API key (needed for firewall zone CRUD and ordering)' -AsSecureString }

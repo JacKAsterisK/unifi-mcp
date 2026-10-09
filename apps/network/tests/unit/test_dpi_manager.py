@@ -135,44 +135,22 @@ class TestDpiManager:
     # ---- _request_integration_api ----
 
     @pytest.mark.asyncio
-    async def test_request_integration_api_builds_correct_url(self, dpi_manager, mock_auth):
-        """Test _request_integration_api builds the correct URL."""
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.json = AsyncMock(return_value={"data": []})
-
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_ctx.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = AsyncMock()
-        mock_session.get = MagicMock(return_value=mock_ctx)
-        mock_session.close = AsyncMock()
-
-        mock_auth.get_api_key_session.return_value = mock_session
-
-        await dpi_manager._request_integration_api("/v1/dpi/applications")
-
-        mock_session.get.assert_called_once()
-        call_args = mock_session.get.call_args
-        assert "/proxy/network/integration/v1/dpi/applications" in call_args[0][0]
-        mock_session.close.assert_called_once()
+    async def test_request_integration_api_uses_shared_transport(self, dpi_manager, mock_connection, mock_auth):
+        mock_connection.request_integration_api = AsyncMock(return_value={"data": []})
+        assert await dpi_manager._request_integration_api("/v1/dpi/applications") == {"data": []}
+        mock_connection.request_integration_api.assert_awaited_once_with(
+            "GET", "/v1/dpi/applications", params=None, auth=mock_auth
+        )
+        mock_auth.get_api_key_session.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_request_integration_api_non_200_returns_none(self, dpi_manager, mock_auth):
+    async def test_request_integration_api_non_200_returns_none(self, dpi_manager, mock_connection):
         """Test _request_integration_api returns None on non-200 response."""
-        mock_resp = AsyncMock()
-        mock_resp.status = 401
+        from unifi_core.network.managers.connection_manager import IntegrationRequestError
 
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_ctx.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = AsyncMock()
-        mock_session.get = MagicMock(return_value=mock_ctx)
-        mock_session.close = AsyncMock()
-
-        mock_auth.get_api_key_session.return_value = mock_session
+        mock_connection.request_integration_api = AsyncMock(
+            side_effect=IntegrationRequestError("fixed test failure", http_status=401)
+        )
 
         result = await dpi_manager._request_integration_api("/v1/dpi/applications")
 

@@ -15,6 +15,8 @@ from unifi_core.network.managers.connection_manager import (
     _probe_endpoint,
     detect_unifi_os_pre_login,
 )
+from unifi_core.network.managers.dpi_manager import DpiManager
+from unifi_core.network.managers.firewall_manager import FirewallManager
 from unifi_core.network.transport import controller_tls, sdk_tls
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "tls"
@@ -38,6 +40,11 @@ async def gateway(monkeypatch):
             return ws
         if request.path == "/redirect":
             raise web.HTTPTemporaryRedirect(location="https://localhost:1/leak")
+        if request.path.endswith("/integration/v1/redirect"):
+            raise web.HTTPTemporaryRedirect(location="https://localhost:1/leak")
+        if request.path.endswith("/integration/v1/disconnect"):
+            request.transport.close()
+            return web.Response()
         response = web.json_response({"meta": {"rc": "ok"}, "data": []})
         if request.path.endswith("/login"):
             response.set_cookie("TOKEN", "synthetic-cookie")
@@ -159,3 +166,60 @@ async def test_probes_cannot_override_verified_connector(gateway):
             session, f"https://127.0.0.1:{port}/api/self/sites", aiohttp.ClientTimeout(total=2), "test"
         )
     assert received == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["get", "post", "put", "delete"])
+@pytest.mark.parametrize("pin,expected", [(PIN, True), (WRONG_PIN, False), ("", False)])
+async def test_firewall_integration_uses_connection_tls_before_sending_key(gateway, method, pin, expected):
+    port, received = gateway
+    connection = ConnectionManager("127.0.0.1", "", "", port=port, verify_ssl=True, tls_sha256=pin)
+    firewall = FirewallManager(connection, UniFiAuth(api_key="synthetic-integration-key"))
+    if expected:
+        await firewall._request_integration_api(method, "/v1/sites", data={"name": "synthetic"})
+        assert len(received) == 1
+        assert received[0][0] == method.upper()
+        assert received[0][2]["X-API-Key"] == "synthetic-integration-key"
+        assert "Cookie" not in received[0][2]
+    else:
+        with pytest.raises(RuntimeError, match="Network Integration API request failed"):
+            await firewall._request_integration_api(method, "/v1/sites", data={"name": "synthetic"})
+        assert received == []
+
+
+@pytest.mark.asyncio
+async def test_integration_redirect_is_not_followed(gateway):
+    port, received = gateway
+    connection = ConnectionManager("127.0.0.1", "", "", port=port, verify_ssl=True, tls_sha256=PIN)
+    firewall = FirewallManager(connection, UniFiAuth(api_key="synthetic-integration-key"))
+    with pytest.raises(RuntimeError, match="HTTP 307"):
+        await firewall._request_integration_api("put", "/v1/redirect", data={"name": "synthetic"})
+    assert len(received) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pin,expected", [(PIN, True), (WRONG_PIN, False), ("", False)])
+async def test_dpi_integration_uses_same_pin_without_cookies(gateway, pin, expected):
+    port, received = gateway
+    connection = ConnectionManager("127.0.0.1", "", "", port=port, verify_ssl=True, tls_sha256=pin)
+    dpi = DpiManager(connection, UniFiAuth(api_key="synthetic-integration-key"))
+    if expected:
+        await dpi._request_integration_api("/v1/dpi/applications")
+        assert len(received) == 1
+        assert received[0][2]["X-API-Key"] == "synthetic-integration-key"
+        assert "Cookie" not in received[0][2]
+    else:
+        with pytest.raises(RuntimeError):
+            await dpi._request_integration_api("/v1/dpi/applications")
+        assert received == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["post", "put", "delete"])
+async def test_integration_disconnect_does_not_replay_write(gateway, method):
+    port, received = gateway
+    connection = ConnectionManager("127.0.0.1", "", "", port=port, verify_ssl=True, tls_sha256=PIN)
+    firewall = FirewallManager(connection, UniFiAuth(api_key="synthetic-integration-key"))
+    with pytest.raises(RuntimeError, match="write outcome is unknown"):
+        await firewall._request_integration_api(method, "/v1/disconnect", data={"name": "synthetic"})
+    assert len(received) == 1

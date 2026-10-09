@@ -550,18 +550,26 @@ class TestFirewallPolicyOrdering:
         def request(self, *args, **kwargs):
             return TestFirewallPolicyOrdering._ResponseContext(self.response)
 
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            await self.close()
+
         async def close(self):
             self.closed = True
 
     @staticmethod
     def _manager_with_integration_response(mock_connection, response):
+        from unifi_core.network.managers.connection_manager import ConnectionManager
         from unifi_core.network.managers.firewall_manager import FirewallManager
 
         session = TestFirewallPolicyOrdering._Session(response)
         auth = MagicMock()
         auth.has_api_key = True
         auth.get_api_key_session = AsyncMock(return_value=session)
-        return FirewallManager(mock_connection, auth), session
+        connection = ConnectionManager(mock_connection.host, "", "", port=mock_connection.port, verify_ssl=True)
+        return FirewallManager(connection, auth), session
 
     @pytest.mark.asyncio
     async def test_ordering_requires_api_key(self, firewall_manager):
@@ -569,13 +577,13 @@ class TestFirewallPolicyOrdering:
             await firewall_manager._request_integration_api("get", "/v1/sites")
 
     @pytest.mark.asyncio
-    async def test_integration_api_reports_non_json_error_body(self, mock_connection):
+    async def test_integration_api_excludes_non_json_error_body(self, mock_connection):
         response = self._Response(status=502, json_error=ValueError("not json"), text_body="<html>bad gateway</html>")
         manager, session = self._manager_with_integration_response(mock_connection, response)
 
-        with pytest.raises(RuntimeError, match="Integration API returned 502.*bad gateway"):
+        with pytest.raises(RuntimeError, match="HTTP 502") as error:
             await manager._request_integration_api("get", "/v1/sites")
-
+        assert "bad gateway" not in str(error.value)
         assert session.closed is True
 
     @pytest.mark.asyncio
@@ -583,7 +591,7 @@ class TestFirewallPolicyOrdering:
         response = self._Response(status=500, json_error=ValueError("not json"), text_body="")
         manager, _session = self._manager_with_integration_response(mock_connection, response)
 
-        with pytest.raises(RuntimeError, match="Integration API returned 500.*<empty body>"):
+        with pytest.raises(RuntimeError, match="HTTP 500"):
             await manager._request_integration_api("get", "/v1/sites")
 
     @pytest.mark.asyncio
@@ -591,8 +599,9 @@ class TestFirewallPolicyOrdering:
         response = self._Response(status=200, json_error=ValueError("not json"), text_body="OK")
         manager, _session = self._manager_with_integration_response(mock_connection, response)
 
-        with pytest.raises(RuntimeError, match="Integration API returned non-JSON response.*OK"):
+        with pytest.raises(RuntimeError, match="ValueError") as error:
             await manager._request_integration_api("get", "/v1/sites")
+        assert "OK" not in str(error.value)
 
     @pytest.mark.asyncio
     async def test_get_policy_ordering_uses_integration_endpoint(self, firewall_manager):

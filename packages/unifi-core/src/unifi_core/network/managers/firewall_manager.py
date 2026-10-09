@@ -4,7 +4,6 @@ import logging
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
-import aiohttp
 from aiounifi.models.api import ApiRequest, ApiRequestV2
 from aiounifi.models.firewall_policy import FirewallPolicy
 from aiounifi.models.port_forward import PortForward
@@ -155,43 +154,7 @@ class FirewallManager:
         """
         self._require_integration_api_key("Firewall Integration API access")
 
-        base_url = f"https://{self._connection.host}:{self._connection.port}"
-        url = f"{base_url}/proxy/network/integration{path}"
-        timeout = aiohttp.ClientTimeout(total=10)
-
-        # get_api_key_session() supplies the required X-API-Key header. The
-        # integration endpoints reject the local controller cookie session.
-        session = await self._auth.get_api_key_session()
-
-        try:
-            async with session.request(
-                method.upper(),
-                url,
-                params=params,
-                json=data,
-                ssl=False,
-                timeout=timeout,
-            ) as resp:
-                try:
-                    body = await resp.json(content_type=None)
-                except Exception:
-                    try:
-                        body_text = (await resp.text()).strip()
-                    except Exception as text_error:
-                        body_text = f"<failed to read response body: {text_error}>"
-                    if len(body_text) > 500:
-                        body_text = f"{body_text[:500]}..."
-                    if resp.status < 200 or resp.status >= 300:
-                        detail = body_text or "<empty body>"
-                        raise RuntimeError(f"Integration API returned {resp.status} for {path}: {detail}")
-                    detail = body_text or "<empty body>"
-                    raise RuntimeError(f"Integration API returned non-JSON response for {path}: {detail}")
-
-                if resp.status < 200 or resp.status >= 300:
-                    raise RuntimeError(f"Integration API returned {resp.status} for {path}: {body}")
-                return body if isinstance(body, dict) else {}
-        finally:
-            await session.close()
+        return await self._connection.request_integration_api(method, path, params=params, data=data, auth=self._auth)
 
     def _require_integration_api_key(self, operation: str) -> None:
         """Fail before controller I/O when an Integration API mutation lacks auth."""

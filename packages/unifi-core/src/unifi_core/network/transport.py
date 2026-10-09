@@ -47,3 +47,15 @@ def controller_origin(base_url: str) -> aiohttp.ClientMiddlewareType:
         return await handler(request)
 
     return enforce
+
+
+async def no_retry_controller_write(
+    request: aiohttp.ClientRequest, handler: aiohttp.ClientHandlerType
+) -> aiohttp.ClientResponse:
+    """Prevent aiohttp from replaying an uncertain idempotent controller write."""
+    try:
+        return await handler(request)
+    except (aiohttp.ClientOSError, aiohttp.ServerDisconnectedError):
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            raise aiohttp.ClientConnectionError("Controller write transport failed") from None
+        raise

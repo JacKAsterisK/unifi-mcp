@@ -152,25 +152,11 @@ async def test_full_catalog_rejects_missing_or_inconsistent_totals(manager, conn
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("verify_ssl", [True, False])
-async def test_integration_request_propagates_tls_verification(connection, auth, verify_ssl):
-    connection.verify_ssl = verify_ssl
-    response = AsyncMock()
-    response.status = 200
-    response.json = AsyncMock(return_value={"data": []})
+async def test_integration_transport_failure_propagates_with_safe_log(connection, auth, caplog):
+    from unifi_core.network.managers.connection_manager import IntegrationRequestError
 
-    response_context = AsyncMock()
-    response_context.__aenter__ = AsyncMock(return_value=response)
-    response_context.__aexit__ = AsyncMock(return_value=None)
-
-    session = AsyncMock()
-    session.get = MagicMock(return_value=response_context)
-    session.close = AsyncMock()
-    auth.get_api_key_session.return_value = session
-
-    manager = DpiManager(connection, auth)
-    await manager._request_integration_api("/v1/dpi/applications")
-
-    session.get.assert_called_once()
-    assert session.get.call_args.kwargs["ssl"] is verify_ssl
-    session.close.assert_awaited_once()
+    connection.request_integration_api = AsyncMock(side_effect=IntegrationRequestError("safe failure"))
+    with pytest.raises(IntegrationRequestError):
+        await DpiManager(connection, auth)._request_integration_api("/v1/dpi/applications")
+    assert "safe failure" not in caplog.text
+    assert "IntegrationRequestError" in caplog.text

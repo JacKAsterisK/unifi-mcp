@@ -36,6 +36,10 @@ TOOLS = READ_TOOLS + (
     "unifi_set_client_ip_settings",
     "unifi_list_port_profiles",
     "unifi_get_port_profile_details",
+    "unifi_create_port_profile",
+    "unifi_delete_port_profile",
+    "unifi_get_switch_ports",
+    "unifi_get_port_stats",
     "unifi_set_switch_port_profile",
 )
 ALLOWED_ACTIONS = {
@@ -43,7 +47,7 @@ ALLOWED_ACTIONS = {
     "NETWORKS": ("CREATE", "UPDATE", "DELETE"),
     "FIREWALL_POLICIES": ("CREATE", "UPDATE", "DELETE"),
     "CLIENTS": ("UPDATE",),
-    "SWITCH": ("UPDATE",),
+    "SWITCH": ("CREATE", "UPDATE", "DELETE"),
 }
 
 

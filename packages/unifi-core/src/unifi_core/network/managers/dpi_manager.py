@@ -18,10 +18,8 @@ unresolved names null rather than infer them from a partial catalogue.
 import logging
 from typing import Any, Dict, Optional
 
-import aiohttp
-
 from unifi_core.auth import UniFiAuth
-from unifi_core.network.managers.connection_manager import ConnectionManager
+from unifi_core.network.managers.connection_manager import ConnectionManager, IntegrationRequestError
 
 logger = logging.getLogger("unifi-network-mcp")
 
@@ -67,27 +65,15 @@ class DpiManager:
             )
             return None
 
-        base_url = f"https://{self._connection.host}:{self._connection.port}"
-        url = f"{base_url}/proxy/network/integration{path}"
-
         try:
-            session = await self._auth.get_api_key_session()
-            try:
-                async with session.get(
-                    url,
-                    params=params,
-                    ssl=self._connection.verify_ssl,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
-                    if resp.status == 200:
-                        return await resp.json()
-                    else:
-                        logger.error("Integration API returned %s for %s", resp.status, path)
-                        return None
-            finally:
-                await session.close()
-        except Exception as e:
-            logger.error("Error calling integration API %s: %s", path, e)
+            return await self._connection.request_integration_api("GET", path, params=params, auth=self._auth)
+        except IntegrationRequestError as error:
+            logger.error("DPI Integration request failed: %s", type(error).__name__)
+            if error.http_status is not None:
+                return None
+            raise
+        except Exception as error:
+            logger.error("DPI Integration request failed: %s", type(error).__name__)
             raise
 
     async def get_dpi_applications(

@@ -1,14 +1,16 @@
 # Local Windows provisioning
 
 This optional profile lets the Network MCP provision a VLAN, firewall policies,
-DHCP reservations, switch-port assignment and an IPv4 WireGuard server without
+DHCP reservations, access-port profiles/assignment and an IPv4 WireGuard server without
 browser automation. The existing read-only profile remains separate.
 
 ## Configure a temporary writer
 
 1. Install the locked environment with `uv sync --locked --package unifi-network-mcp`.
-2. Create a separate **local UniFi account with Network write permissions**.
-   The View Only inventory account cannot provision resources.
+2. Use a **local UniFi account with Network write permissions**. A separate
+   temporary account preserves the inventory account's View Only boundary.
+   Alternatively, temporarily grant the existing account Network write access
+   and restore View Only after provisioning.
 3. Independently compare the gateway's SHA-256 certificate fingerprint with its
    certificate viewer. This profile requires an exact certificate pin, including
    when the certificate is self-signed. It does not change Windows trust.
@@ -19,6 +21,15 @@ browser automation. The existing read-only profile remains separate.
 5. Review the generated MCP entry at
    `%LOCALAPPDATA%\UniFiMCP\provision\codex-config.toml`, add it to Codex's MCP
    configuration, and explicitly set its `enabled` value to `true` for the work.
+
+To reuse a login already stored by `setup-readonly.bat`, pass
+`-ReuseReadOnlyLogin` with the same controller address, port and certificate pin.
+Setup checks the source profile's permissions and target before decrypting it,
+then stores a separate writer profile. It does not modify the original profile
+or the UniFi account's role. An Integration key is still prompted securely with
+`-IncludeApiKey`; keys are never copied from the inventory profile. When sharing
+one UniFi account between profiles, the inventory account loses its independent
+controller-enforced View Only boundary until you restore that role.
 
 Setup stores credentials using Windows CurrentUser DPAPI and restricts the
 profile to the current Windows user and SYSTEM. It makes no gateway connection

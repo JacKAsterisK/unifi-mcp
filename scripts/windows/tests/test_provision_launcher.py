@@ -73,7 +73,11 @@ def test_every_allowed_write_has_matching_scoped_policy_and_registered_schema():
             if not tool["annotations"]["readOnlyHint"]:
                 assert checker.check(tool["permission_category"], tool["permission_action"])
         assert checker.check("system", "update") is False
-        assert checker.check("switch", "delete") is False
+        assert checker.check("switch", "create") is True
+        assert checker.check("switch", "delete") is True
+        assert checker.check("clients", "delete") is False
+        assert "unifi_power_cycle_port" not in launcher.TOOLS
+        assert "unifi_configure_port_aggregation" not in launcher.TOOLS
 
 
 @pytest.mark.parametrize(
@@ -153,3 +157,69 @@ def test_powershell_writer_setup_dpapi_acl_and_readonly_collision(tmp_path):
     rejected = subprocess.run([str(powershell), "-NoProfile", "-Command", command], capture_output=True, timeout=30)
     assert b"Refusing to overwrite" in rejected.stderr
     assert json.loads(launcher.unprotect(encrypted)) == CREDENTIALS
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows DPAPI and NTFS")
+@pytest.mark.parametrize("scenario", ["valid", "different-pin", "unsafe-acl", "corrupt-json"])
+def test_reuse_login_checks_target_acl_and_decryption_without_leaking_secrets(tmp_path, scenario):
+    root = str(launcher.ROOT).replace("'", "''")
+    private_root = str(tmp_path).replace("'", "''")
+    source = tmp_path / "UniFiMCP" / "readonly"
+    writer = tmp_path / "writer"
+    source_pin = "11" * 32 if scenario == "different-pin" else "00" * 32
+    stage = rf"""
+    $env:LOCALAPPDATA = '{private_root}'
+    function Get-Credential {{
+        param($Message)
+        [PSCredential]::new('synthetic-writer',(ConvertTo-SecureString 'synthetic-password' -AsPlainText -Force))
+    }}
+    & '{root}\scripts\windows\configure_readonly.ps1' -ControllerHost '127.0.0.1' `
+        -TrustedTlsSha256 '{source_pin}' -ViewOnlyConfirmed
+    if ($LASTEXITCODE -ne 0) {{ exit 1 }}
+    """
+    powershell = Path(os.environ["SYSTEMROOT"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    result = subprocess.run([str(powershell), "-NoProfile", "-Command", stage], capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    if scenario == "unsafe-acl":
+        poison = rf"""
+        $path = '{str(source).replace("'", "''")}'
+        $acl = [IO.Directory]::GetAccessControl($path)
+        $sid = [Security.Principal.SecurityIdentifier]::new('S-1-1-0')
+        $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,'ReadAndExecute','Allow'))
+        [IO.Directory]::SetAccessControl($path,$acl)
+        """
+    elif scenario == "corrupt-json":
+        poison = rf"""
+        Add-Type -AssemblyName System.Security
+        $data = [Text.Encoding]::UTF8.GetBytes('{{"password":"synthetic-password", invalid')
+        $cipher = [Security.Cryptography.ProtectedData]::Protect($data,$null,'CurrentUser')
+        $credentialPath = '{str(source / "credential.dpapi").replace("'", "''")}'
+        [IO.File]::WriteAllText($credentialPath,[Convert]::ToBase64String($cipher))
+        """
+    else:
+        poison = "exit 0"
+    result = subprocess.run([str(powershell), "-NoProfile", "-Command", poison], capture_output=True, timeout=15)
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    original = (source / "credential.dpapi").read_bytes()
+    command = rf"""
+    $env:LOCALAPPDATA = '{private_root}'
+    function Get-Credential {{ throw 'Unexpected password prompt' }}
+    function Read-Host {{
+        param($Prompt,[switch]$AsSecureString)
+        ConvertTo-SecureString 'synthetic-api-key' -AsPlainText -Force
+    }}
+    & '{root}\scripts\windows\configure_provision.ps1' -ControllerHost '127.0.0.1' `
+        -TrustedTlsSha256 '{"00" * 32}' -ProfileDirectory '{str(writer).replace("'", "''")}' `
+        -IncludeApiKey -ReuseReadOnlyLogin
+    """
+    result = subprocess.run([str(powershell), "-NoProfile", "-Command", command], capture_output=True, timeout=30)
+    assert all(value.encode() not in result.stdout + result.stderr for value in CREDENTIALS.values())
+    assert (source / "credential.dpapi").read_bytes() == original
+    if scenario == "valid":
+        assert result.returncode == 0, result.stderr.decode(errors="replace")
+        encrypted = base64.b64decode((writer / "credential.dpapi").read_bytes(), validate=True)
+        assert json.loads(launcher.unprotect(encrypted)) == CREDENTIALS
+    else:
+        assert result.returncode != 0
+        assert not writer.exists()
+        assert b"Unexpected password prompt" not in result.stderr
