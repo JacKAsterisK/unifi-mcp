@@ -30,9 +30,8 @@ if (Test-Path -LiteralPath $profilePath) {
 }
 $credential = $null
 if ($ReuseReadOnlyLogin) {
-    $checker = Join-Path $env:SYSTEMROOT 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    & $checker -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'verify_private_profile.ps1') $readonlyPath
-    if ($LASTEXITCODE -ne 0) { throw 'Existing login profile is missing or has unsafe permissions.' }
+    $validProfile = & (Join-Path $PSScriptRoot 'verify_private_profile.ps1') -ProfileDirectory $readonlyPath -PassThru
+    if ($validProfile -ne $true) { throw 'Existing login profile is missing or has unsafe permissions.' }
     $sourceBytes = $null
     $sourceLogin = $null
     try {

@@ -1,5 +1,10 @@
 # Project Rules
 
+## Fork workflow
+
+Work on the fork's existing default branch (`main`). Do not create feature
+branches or branch-based worktrees unless the user explicitly requests them.
+
 ## Documentation scope
 
 Commit user-facing documentation and maintained contributor/agent instructions only.

@@ -201,6 +201,21 @@ def test_reuse_login_checks_target_acl_and_decryption_without_leaking_secrets(tm
     result = subprocess.run([str(powershell), "-NoProfile", "-Command", poison], capture_output=True, timeout=15)
     assert result.returncode == 0, result.stderr.decode(errors="replace")
     original = (source / "credential.dpapi").read_bytes()
+    # The same ACL boundary must agree in-process and as a standalone launcher.
+    verifier = str(SCRIPTS / "verify_private_profile.ps1")
+    source_path = str(source).replace("'", "''")
+    inline_check = rf"""
+    $valid = & '{verifier.replace("'", "''")}' -ProfileDirectory '{source_path}' -PassThru
+    if ($valid -isnot [bool]) {{ exit 2 }}
+    if ($valid) {{ exit 0 }}
+    exit 1
+    """
+    inline = subprocess.run([str(powershell), "-NoProfile", "-Command", inline_check], capture_output=True, timeout=15)
+    standalone = subprocess.run(
+        [str(powershell), "-NoProfile", "-File", verifier, str(source)], capture_output=True, timeout=15
+    )
+    assert inline.returncode == standalone.returncode == (1 if scenario == "unsafe-acl" else 0)
+    assert all(value.encode() not in inline.stdout + inline.stderr for value in CREDENTIALS.values())
     command = rf"""
     $env:LOCALAPPDATA = '{private_root}'
     function Get-Credential {{ throw 'Unexpected password prompt' }}
