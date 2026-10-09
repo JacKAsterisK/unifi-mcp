@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -1993,6 +1993,7 @@ access = [
 ]
 network = [
     { name = "aiounifi" },
+    { name = "cryptography" },
 ]
 protect = [
     { name = "pyjwt" },
@@ -2011,6 +2012,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.3" },
     { name = "aiounifi", marker = "extra == 'network'", specifier = ">=92" },
+    { name = "cryptography", marker = "extra == 'network'", specifier = ">=50.0.1" },
     { name = "py-unifi-access", marker = "extra == 'access'", specifier = ">=1.6.1" },
     { name = "pydantic", specifier = ">=2.13.5" },
     { name = "pyjwt", marker = "extra == 'protect'", specifier = ">=2.13.0" },

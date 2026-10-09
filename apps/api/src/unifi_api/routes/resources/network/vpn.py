@@ -7,11 +7,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from unifi_core.exceptions import UniFiNotFoundError
+from unifi_core.network.models.wireguard import WireGuardError
 
 from unifi_api.auth.middleware import require_scope
 from unifi_api.auth.scopes import Scope
 from unifi_api.graphql.pydantic_export import to_pydantic_model
-from unifi_api.graphql.types.network.vpn import VpnClient, VpnServer
+from unifi_api.graphql.types.network.vpn import VpnClient, VpnServer, WireGuardPeer
 from unifi_api.routes.resources._common import (
     require_capability,
     resolve_controller,
@@ -20,6 +21,42 @@ from unifi_api.services.pagination import Cursor, InvalidCursor, paginate
 from unifi_api.services.pydantic_models import Detail, Page
 
 router = APIRouter()
+
+
+@router.get(
+    "/sites/{site_id}/vpn-servers/{server_id}/wireguard-peers",
+    response_model=Page[to_pydantic_model(WireGuardPeer)],
+    dependencies=[Depends(require_scope(Scope.READ))],
+    tags=["network/vpn"],
+    description=(
+        "Read fresh public WireGuard peer fields using the server's legacy networkconf _id. "
+        "Returned peer _ids are scoped to the WireGuard peer tool family; do not pass Integration API UUIDs. "
+        "Requires local Network session authentication. Client private keys are excluded."
+    ),
+)
+async def list_wireguard_peers(
+    request: Request,
+    site_id: str,
+    server_id: str,
+    controller=Depends(resolve_controller),
+    limit: int = Query(50, ge=1, le=200),
+    cursor: str | None = Query(None),
+) -> dict:
+    require_capability(controller, "network")
+    factory = request.app.state.manager_factory
+    sm = request.app.state.sessionmaker
+    try:
+        async with sm() as session:
+            manager = await factory.get_domain_manager(session, controller.id, "network", "vpn_manager", site=site_id)
+            items = await manager.list_wireguard_peers(server_id)
+    except WireGuardError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    page, next_cursor = paginate(list(items), limit=limit, cursor=_decode_cursor(cursor), key_fn=_id_key)
+    return {
+        "items": [WireGuardPeer.from_manager_output(item).to_dict() for item in page],
+        "next_cursor": next_cursor.encode() if next_cursor else None,
+        "render_hint": WireGuardPeer.render_hint("list"),
+    }
 
 
 def _id_key(obj) -> tuple:

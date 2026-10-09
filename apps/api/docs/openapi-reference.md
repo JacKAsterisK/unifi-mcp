@@ -1548,6 +1548,23 @@ Read CyberSecure posture. Gateway device IDs belong to the legacy Network device
 
 **Returns:** `Detail_VpnServerModel_`
 
+### `GET /v1/sites/{site_id}/vpn-servers/{server_id}/wireguard-peers` — List Wireguard Peers
+
+
+Read fresh public WireGuard peer fields using the server's legacy networkconf _id. Returned peer _ids are scoped to the WireGuard peer tool family; do not pass Integration API UUIDs. Requires local Network session authentication. Client private keys are excluded.
+
+
+**Parameters:**
+
+- `site_id` (path) (required)
+- `server_id` (path) (required)
+- `limit` (query)
+- `cursor` (query)
+- `controller` (query)
+
+
+**Returns:** `Page_WireGuardPeerModel_`
+
 
 ## network/wireless
 

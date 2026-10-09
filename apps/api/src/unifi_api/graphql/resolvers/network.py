@@ -102,7 +102,7 @@ from unifi_api.graphql.types.network.traffic_flow import (
     TrafficFlowStatistics,
 )
 from unifi_api.graphql.types.network.voucher import Voucher
-from unifi_api.graphql.types.network.vpn import VpnClient, VpnServer
+from unifi_api.graphql.types.network.vpn import VpnClient, VpnServer, WireGuardPeer
 from unifi_api.graphql.types.network.wlan import Wlan
 
 # ---------------------------------------------------------------------------
@@ -1598,6 +1598,12 @@ class VpnServerPage:
     next_cursor: str | None
 
 
+@strawberry.type(description="Paginated public WireGuard peers.")
+class WireGuardPeerPage:
+    items: list[WireGuardPeer]
+    next_cursor: str | None
+
+
 @strawberry.type(description="Paginated page of DNS records.")
 class DnsRecordPage:
     items: list[DnsRecord]
@@ -2464,6 +2470,37 @@ class NetworkQuery:
             if vid == id:
                 return VpnServer.from_manager_output(v)
         return None
+
+    @strawberry.field(
+        permission_classes=[IsRead],
+        description="List WireGuard peers using a legacy server networkconf ID; requires local Network authentication.",
+    )
+    async def wireguard_peers(
+        self,
+        info: Info,
+        controller: strawberry.ID,
+        server_id: strawberry.ID,
+        site: str = "default",
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> WireGuardPeerPage:
+        ctx: GraphQLContext = info.context
+
+        async def fetch() -> list:
+            async with ctx.sessionmaker() as session:
+                manager = await ctx.manager_factory.get_domain_manager(
+                    session, controller, "network", "vpn_manager", site=site
+                )
+                return await manager.list_wireguard_peers(str(server_id))
+
+        raw = await ctx.cache.get_or_fetch(f"network/wireguard-peers/{controller}/{site}/{server_id}", fetch)
+        from unifi_api.services.pagination import paginate
+
+        page, next_cursor = paginate(list(raw), limit=limit, cursor=_decode_cursor(cursor), key_fn=_id_key)
+        return WireGuardPeerPage(
+            items=[WireGuardPeer.from_manager_output(item) for item in page],
+            next_cursor=next_cursor.encode() if next_cursor else None,
+        )
 
     # ---- DNS domain ------------------------------------------------------
 

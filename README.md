@@ -19,7 +19,7 @@ Leverage agents and agentic AI workflows to manage your UniFi deployment.
 
 | Server | Status | Tools | Package |
 |--------|--------|-------|---------|
-| [Network](apps/network/) | Stable | 209 | [`unifi-network-mcp`](https://pypi.org/project/unifi-network-mcp/) |
+| [Network](apps/network/) | Stable | 215 | [`unifi-network-mcp`](https://pypi.org/project/unifi-network-mcp/) |
 | [Protect](apps/protect/) | Stable | 62 | [`unifi-protect-mcp`](https://pypi.org/project/unifi-protect-mcp/) |
 | [Access](apps/access/) | Stable | 37 | [`unifi-access-mcp`](https://pypi.org/project/unifi-access-mcp/) |
 
@@ -254,6 +254,9 @@ All mutations use a **preview-then-confirm** flow — you see exactly what will 
 For a local Windows View Only connection with DPAPI credentials, certificate
 pinning, and a strict read-tool profile, see [Local read-only Windows setup](docs/local-readonly-windows.md).
 
+For a separate temporary write profile and verified IPv4 WireGuard provisioning
+tools, see [Local Windows provisioning](docs/local-provisioning-windows.md).
+
 Set these variables in the server's process environment (shell exports, the MCP client's `env` block, or Docker `environment:` / `env_file:`):
 
 | Variable | Required | Description |
@@ -311,7 +314,7 @@ This is a monorepo with shared packages:
 
 ```
 apps/
-  network/          # UniFi Network MCP server (stable, 209 tools)
+  network/          # UniFi Network MCP server (stable, 215 tools)
   protect/          # UniFi Protect MCP server (stable, 62 tools)
   access/           # UniFi Access MCP server (stable, 37 tools)
   api/              # Independent REST + GraphQL API server (beta)

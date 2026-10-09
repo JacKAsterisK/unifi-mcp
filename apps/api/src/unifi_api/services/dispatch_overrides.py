@@ -63,6 +63,13 @@ from unifi_api.services.action_results import ShapedReadResult
 
 # Format: tool_name -> (manager_attr, method_name)
 DISPATCH_OVERRIDES: dict[str, tuple[str, str]] = {
+    # WireGuard tools use separate live-preview methods. Confirmed actions must
+    # bind the actual mutation, never the first (preflight) await in the wrapper.
+    "unifi_create_wireguard_server": ("vpn_manager", "create_wireguard_server"),
+    "unifi_create_wireguard_peer": ("vpn_manager", "create_wireguard_peer"),
+    "unifi_delete_wireguard_peer": ("vpn_manager", "delete_wireguard_peer"),
+    "unifi_delete_wireguard_server": ("vpn_manager", "delete_wireguard_server"),
+    "unifi_update_wireguard_server_state": ("vpn_manager", "update_wireguard_server_state"),
     "unifi_create_nat_rule": ("nat_manager", "create_nat_rule_verified"),
     "unifi_update_nat_rule": ("nat_manager", "update_nat_rule_verified"),
     "unifi_delete_nat_rule": ("nat_manager", "delete_nat_rule_verified"),

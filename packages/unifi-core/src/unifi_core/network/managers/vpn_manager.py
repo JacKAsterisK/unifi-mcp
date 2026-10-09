@@ -8,6 +8,7 @@ Note: UniFi is developing a dedicated VPN API but it's not yet complete.
 This implementation uses the networkconf endpoint which is the reliable approach.
 """
 
+import asyncio
 import logging
 import re
 from copy import deepcopy
@@ -20,6 +21,7 @@ from aiounifi.models.api import ApiRequest
 from unifi_core.exceptions import UniFiNotFoundError
 from unifi_core.merge import deep_merge
 from unifi_core.network.managers.connection_manager import ConnectionManager, controller_error_code, response_status
+from unifi_core.network.managers.wireguard_operations import WireGuardOperations
 from unifi_core.network.models.vpn import (
     ALTERNATE_ADDRESS_KEYS,
     VpnAlternateAddressError,
@@ -60,7 +62,7 @@ def classify_vpn_type(purpose: str, vpn_type: str) -> Tuple[bool, bool]:
     return is_client, is_server
 
 
-class VpnManager:
+class VpnManager(WireGuardOperations):
     """Manages VPN-related operations on the Unifi Controller.
 
     VPN configurations are retrieved from the networkconf API and filtered
@@ -74,6 +76,7 @@ class VpnManager:
             connection_manager: The shared ConnectionManager instance.
         """
         self._connection = connection_manager
+        self._wireguard_lock = asyncio.Lock()
 
     async def _get_all_network_configs(self) -> List[Dict[str, Any]]:
         """Get all network configurations from the controller.

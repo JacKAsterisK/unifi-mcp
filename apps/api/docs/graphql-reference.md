@@ -1362,6 +1362,11 @@ type NetworkQuery {
   """Look up a single VPN server by id."""
   vpnServer(controller: ID!, id: ID!, site: String! = "default"): VpnServer
 
+  """
+  List WireGuard peers using a legacy server networkconf ID; requires local Network authentication.
+  """
+  wireguardPeers(controller: ID!, serverId: ID!, site: String! = "default", limit: Int! = 50, cursor: String = null): WireGuardPeerPage!
+
   """List static DNS records on the given controller/site (paginated)."""
   dnsRecords(controller: ID!, site: String! = "default", limit: Int! = 50, cursor: String = null): DnsRecordPage!
 
@@ -2441,6 +2446,24 @@ type VpnServerPage {
   nextCursor: String
 }
 
+"""
+Public WireGuard peer fields. IDs belong to the legacy WireGuard peer family.
+"""
+type WireGuardPeer {
+  id: ID
+  networkId: ID
+  name: String
+  interfaceIp: String
+  publicKey: String
+  allowedIps: [String!]
+}
+
+"""Paginated public WireGuard peers."""
+type WireGuardPeerPage {
+  items: [WireGuardPeer!]!
+  nextCursor: String
+}
+
 """A UniFi WLAN/SSID configuration."""
 type Wlan {
   id: ID
@@ -2660,6 +2683,7 @@ Read-only access to UniFi Network resources.
 - `vpnClients: VpnClientPage!`  — List configured VPN clients (outbound tunnels) (paginated).
 - `vpnServer: VpnServer`  — Look up a single VPN server by id.
 - `vpnServers: VpnServerPage!`  — List configured VPN servers (inbound tunnels) (paginated).
+- `wireguardPeers: WireGuardPeerPage!`  — List WireGuard peers using a legacy server networkconf ID; requires local Network authentication.
 - `wlan: Wlan`  — Look up a single WLAN/SSID by id.
 - `wlans: WlanPage!`  — List WLAN/SSID configurations on the given controller/site (paginated).
 

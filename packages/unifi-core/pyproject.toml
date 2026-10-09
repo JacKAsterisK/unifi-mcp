@@ -15,7 +15,7 @@ dependencies = [
 # they need and can't accidentally forget to install one — that failure
 # mode hit prod historically. Versions floor at the lowest tested.
 [project.optional-dependencies]
-network = ["aiounifi>=92"]
+network = ["aiounifi>=92", "cryptography>=50.0.1"]
 protect = [
     # Camera/light public setters require a Protect API key; see the Protect README.
     "uiprotect>=16.16.1,<17",

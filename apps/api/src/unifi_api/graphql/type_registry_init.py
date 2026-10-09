@@ -235,6 +235,9 @@ from unifi_api.graphql.types.network.vpn import (
 from unifi_api.graphql.types.network.vpn import (
     VpnServer as NetworkVpnServerType,
 )
+from unifi_api.graphql.types.network.vpn import (
+    WireGuardPeer as NetworkWireGuardPeerType,
+)
 from unifi_api.graphql.types.network.wlan import (
     Wlan as NetworkWlanType,
 )
@@ -387,6 +390,7 @@ def build_type_registry() -> TypeRegistry:
         "detail",
     )
     reg.register_tool_type("unifi_list_vpn_servers", NetworkVpnServerType, "list")
+    reg.register_tool_type("unifi_list_wireguard_peers", NetworkWireGuardPeerType, "list")
     reg.register_tool_type(
         "unifi_get_vpn_server_details",
         NetworkVpnServerType,

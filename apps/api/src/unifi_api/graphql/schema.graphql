@@ -1351,6 +1351,11 @@ type NetworkQuery {
   """Look up a single VPN server by id."""
   vpnServer(controller: ID!, id: ID!, site: String! = "default"): VpnServer
 
+  """
+  List WireGuard peers using a legacy server networkconf ID; requires local Network authentication.
+  """
+  wireguardPeers(controller: ID!, serverId: ID!, site: String! = "default", limit: Int! = 50, cursor: String = null): WireGuardPeerPage!
+
   """List static DNS records on the given controller/site (paginated)."""
   dnsRecords(controller: ID!, site: String! = "default", limit: Int! = 50, cursor: String = null): DnsRecordPage!
 
@@ -2427,6 +2432,24 @@ type VpnServer {
 """Paginated page of VPN servers."""
 type VpnServerPage {
   items: [VpnServer!]!
+  nextCursor: String
+}
+
+"""
+Public WireGuard peer fields. IDs belong to the legacy WireGuard peer family.
+"""
+type WireGuardPeer {
+  id: ID
+  networkId: ID
+  name: String
+  interfaceIp: String
+  publicKey: String
+  allowedIps: [String!]
+}
+
+"""Paginated public WireGuard peers."""
+type WireGuardPeerPage {
+  items: [WireGuardPeer!]!
   nextCursor: String
 }
 

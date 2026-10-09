@@ -4,6 +4,7 @@
 # tool: unifi_get_vpn_client_details
 # tool: unifi_list_vpn_servers
 # tool: unifi_get_vpn_server_details
+# tool: unifi_list_wireguard_peers
 """
 
 from __future__ import annotations
@@ -15,6 +16,38 @@ from tests.graphql.fixtures._helpers import (
     graphql_query,
     stub_managers,
 )
+
+
+@pytest.mark.asyncio
+async def test_wireguard_peers_list_excludes_private_controller_fields(tmp_path, monkeypatch):
+    monkeypatch.setenv("UNIFI_API_DB_KEY", "k")
+    app, key, cid = await bootstrap(tmp_path, product="network")
+    secret = "synthetic-private-wireguard-field"
+    stub_managers(
+        monkeypatch,
+        {
+            ("network", "vpn_manager", "list_wireguard_peers"): [
+                {
+                    "_id": "peer",
+                    "network_id": "server",
+                    "name": "Developer",
+                    "interface_ip": "10.77.31.2",
+                    "allowed_ips": [],
+                    "private_key": secret,
+                    "opaque": secret,
+                },
+            ],
+        },
+    )
+    body = await graphql_query(
+        app,
+        key,
+        f'{{ network {{ wireguardPeers(controller: "{cid}", serverId: "server") {{ '
+        "items { id networkId name interfaceIp publicKey allowedIps } nextCursor } } }",
+    )
+    assert body.get("errors") is None, body
+    assert body["data"]["network"]["wireguardPeers"]["items"][0]["id"] == "peer"
+    assert secret not in repr(body)
 
 
 @pytest.mark.asyncio

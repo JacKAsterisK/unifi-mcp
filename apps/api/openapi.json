@@ -7380,6 +7380,46 @@
         "title": "Page[VpnServerModel]",
         "type": "object"
       },
+      "Page_WireGuardPeerModel_": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WireGuardPeerModel"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "render_hint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Render Hint"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[WireGuardPeerModel]",
+        "type": "object"
+      },
       "Page_WlanModel_": {
         "additionalProperties": true,
         "properties": {
@@ -9426,6 +9466,82 @@
           }
         },
         "title": "VpnServerModel",
+        "type": "object"
+      },
+      "WireGuardPeerModel": {
+        "additionalProperties": true,
+        "properties": {
+          "allowed_ips": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Ips"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "interface_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface Ip"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "network_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Id"
+          },
+          "public_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Key"
+          }
+        },
+        "title": "WireGuardPeerModel",
         "type": "object"
       },
       "WlanModel": {
@@ -22780,6 +22896,104 @@
           }
         },
         "summary": "Get Vpn Server Details",
+        "tags": [
+          "network/vpn"
+        ]
+      }
+    },
+    "/v1/sites/{site_id}/vpn-servers/{server_id}/wireguard-peers": {
+      "get": {
+        "description": "Read fresh public WireGuard peer fields using the server's legacy networkconf _id. Returned peer _ids are scoped to the WireGuard peer tool family; do not pass Integration API UUIDs. Requires local Network session authentication. Client private keys are excluded.",
+        "operationId": "list_wireguard_peers_v1_sites__site_id__vpn_servers__server_id__wireguard_peers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_id",
+            "required": true,
+            "schema": {
+              "title": "Site Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "Controller UUID; omit to use default",
+            "in": "query",
+            "name": "controller",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Controller UUID; omit to use default",
+              "title": "Controller"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_WireGuardPeerModel_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Wireguard Peers",
         "tags": [
           "network/vpn"
         ]

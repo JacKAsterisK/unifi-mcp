@@ -23,6 +23,7 @@ from typing import Any
 
 import strawberry
 from unifi_core.network.models.vpn import ALTERNATE_ADDRESS_KEYS, alternate_address_view
+from unifi_core.network.models.wireguard import peer_view
 
 
 def _get(obj: Any, key: str, default: Any = None) -> Any:
@@ -32,6 +33,35 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
     if isinstance(raw, dict):
         return raw.get(key, default)
     return getattr(obj, key, default)
+
+
+@strawberry.type(description="Public WireGuard peer fields. IDs belong to the legacy WireGuard peer family.")
+class WireGuardPeer:
+    id: strawberry.ID | None
+    network_id: strawberry.ID | None
+    name: str | None
+    interface_ip: str | None
+    public_key: str | None
+    allowed_ips: list[str] | None
+
+    @classmethod
+    def render_hint(cls, kind: str) -> dict:
+        return {"kind": kind, "primary_key": "id", "display_columns": ["name", "interface_ip", "public_key"]}
+
+    @classmethod
+    def from_manager_output(cls, obj: dict) -> "WireGuardPeer":
+        view = peer_view(obj)
+        return cls(
+            id=view.get("_id"),
+            network_id=view.get("network_id"),
+            name=view.get("name"),
+            interface_ip=view.get("interface_ip"),
+            public_key=view.get("public_key"),
+            allowed_ips=view.get("allowed_ips"),
+        )
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 def _vpn_server_address(obj: Any) -> str | None:

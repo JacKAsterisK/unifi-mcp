@@ -3446,6 +3446,117 @@
       }
     },
     {
+      "name": "unifi_create_wireguard_peer",
+      "product": "network",
+      "category": "vpn_servers",
+      "permission_action": "create",
+      "read_only_hint": false,
+      "auth_method": "local_only",
+      "manager_attr": "vpn_manager",
+      "manager_method": "create_wireguard_peer",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "peer_data": {
+            "additionalProperties": false,
+            "properties": {
+              "interface_ip": {
+                "description": "Peer IPv4 address inside the server subnet; omit /32",
+                "title": "Interface Ip",
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 32,
+                "minLength": 1,
+                "title": "Name",
+                "type": "string"
+              },
+              "public_key": {
+                "description": "Base64 WireGuard public key generated on the developer's client",
+                "title": "Public Key",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "interface_ip",
+              "public_key"
+            ],
+            "title": "WireGuardPeerCreate",
+            "type": "object"
+          },
+          "server_id": {
+            "title": "Server Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id",
+          "peer_data"
+        ],
+        "title": "PeerCreateInput",
+        "type": "object"
+      }
+    },
+    {
+      "name": "unifi_create_wireguard_server",
+      "product": "network",
+      "category": "vpn_servers",
+      "permission_action": "create",
+      "read_only_hint": false,
+      "auth_method": "local_only",
+      "manager_attr": "vpn_manager",
+      "manager_method": "create_wireguard_server",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "server_data": {
+            "additionalProperties": false,
+            "properties": {
+              "ip_subnet": {
+                "description": "First usable IPv4 gateway and prefix, for example 10.77.31.1/24",
+                "title": "Ip Subnet",
+                "type": "string"
+              },
+              "local_port": {
+                "maximum": 65535,
+                "minimum": 1024,
+                "title": "Local Port",
+                "type": "integer"
+              },
+              "name": {
+                "maxLength": 32,
+                "minLength": 1,
+                "title": "Name",
+                "type": "string"
+              },
+              "wireguard_interface": {
+                "default": "wan",
+                "enum": [
+                  "wan",
+                  "wan2"
+                ],
+                "title": "Wireguard Interface",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "ip_subnet",
+              "local_port"
+            ],
+            "title": "WireGuardServerCreate",
+            "type": "object"
+          }
+        },
+        "required": [
+          "server_data"
+        ],
+        "title": "ServerCreateInput",
+        "type": "object"
+      }
+    },
+    {
       "name": "unifi_create_wlan",
       "product": "network",
       "category": "wlans",
@@ -3831,6 +3942,54 @@
         },
         "required": [
           "client_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "unifi_delete_wireguard_peer",
+      "product": "network",
+      "category": "vpn_servers",
+      "permission_action": "delete",
+      "read_only_hint": false,
+      "auth_method": "local_only",
+      "manager_attr": "vpn_manager",
+      "manager_method": "delete_wireguard_peer",
+      "input_schema": {
+        "properties": {
+          "peer_id": {
+            "type": "string"
+          },
+          "server_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id",
+          "peer_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "unifi_delete_wireguard_server",
+      "product": "network",
+      "category": "vpn_servers",
+      "permission_action": "delete",
+      "read_only_hint": false,
+      "auth_method": "local_only",
+      "manager_attr": "vpn_manager",
+      "manager_method": "delete_wireguard_server",
+      "input_schema": {
+        "properties": {
+          "server_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id"
         ],
         "type": "object",
         "additionalProperties": false
@@ -6035,6 +6194,29 @@
       }
     },
     {
+      "name": "unifi_list_wireguard_peers",
+      "product": "network",
+      "category": "wireguard",
+      "permission_action": "read",
+      "read_only_hint": true,
+      "auth_method": "local_only",
+      "manager_attr": "vpn_manager",
+      "manager_method": "list_wireguard_peers",
+      "input_schema": {
+        "properties": {
+          "server_id": {
+            "description": "Legacy WireGuard server networkconf _id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "unifi_list_wlans",
       "product": "network",
       "category": "network",
@@ -8087,6 +8269,32 @@
           },
           "server_id": {
             "description": "Unique identifier (_id) of the VPN server to update (from unifi_list_vpn_servers)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id",
+          "enabled"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "unifi_update_wireguard_server_state",
+      "product": "network",
+      "category": "vpn_servers",
+      "permission_action": "update",
+      "read_only_hint": false,
+      "auth_method": "local_only",
+      "manager_attr": "vpn_manager",
+      "manager_method": "update_wireguard_server_state",
+      "input_schema": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "server_id": {
             "type": "string"
           }
         },

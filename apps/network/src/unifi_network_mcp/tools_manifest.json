@@ -1,5 +1,5 @@
 {
-  "count": 209,
+  "count": 215,
   "generated_by": "scripts/generate_tool_manifest.py",
   "module_map": {
     "unifi_adopt_device": "unifi_network_mcp.tools.devices",
@@ -31,6 +31,8 @@
     "unifi_create_traffic_route": "unifi_network_mcp.tools.traffic_routes",
     "unifi_create_usergroup": "unifi_network_mcp.tools.usergroups",
     "unifi_create_voucher": "unifi_network_mcp.tools.hotspot",
+    "unifi_create_wireguard_peer": "unifi_network_mcp.tools.wireguard",
+    "unifi_create_wireguard_server": "unifi_network_mcp.tools.wireguard",
     "unifi_create_wlan": "unifi_network_mcp.tools.network",
     "unifi_delete_acl_rule": "unifi_network_mcp.tools.acl",
     "unifi_delete_ap_group": "unifi_network_mcp.tools.network",
@@ -48,6 +50,8 @@
     "unifi_delete_port_forward": "unifi_network_mcp.tools.port_forwards",
     "unifi_delete_port_profile": "unifi_network_mcp.tools.switch",
     "unifi_delete_vpn_client": "unifi_network_mcp.tools.vpn",
+    "unifi_delete_wireguard_peer": "unifi_network_mcp.tools.wireguard",
+    "unifi_delete_wireguard_server": "unifi_network_mcp.tools.wireguard",
     "unifi_delete_wlan": "unifi_network_mcp.tools.network",
     "unifi_force_provision_device": "unifi_network_mcp.tools.devices",
     "unifi_force_reconnect_client": "unifi_network_mcp.tools.clients",
@@ -145,6 +149,7 @@
     "unifi_list_vouchers": "unifi_network_mcp.tools.hotspot",
     "unifi_list_vpn_clients": "unifi_network_mcp.tools.vpn",
     "unifi_list_vpn_servers": "unifi_network_mcp.tools.vpn",
+    "unifi_list_wireguard_peers": "unifi_network_mcp.tools.wireguard",
     "unifi_list_wlans": "unifi_network_mcp.tools.network",
     "unifi_locate_device": "unifi_network_mcp.tools.devices",
     "unifi_lookup_by_ip": "unifi_network_mcp.tools.clients",
@@ -203,6 +208,7 @@
     "unifi_update_vpn_client_state": "unifi_network_mcp.tools.vpn",
     "unifi_update_vpn_server_alternate_address": "unifi_network_mcp.tools.vpn",
     "unifi_update_vpn_server_state": "unifi_network_mcp.tools.vpn",
+    "unifi_update_wireguard_server_state": "unifi_network_mcp.tools.wireguard",
     "unifi_update_wlan": "unifi_network_mcp.tools.network",
     "unifi_upgrade_device": "unifi_network_mcp.tools.devices"
   },
@@ -3881,6 +3887,277 @@
         "readOnlyHint": false
       },
       "auth_method": "local_only",
+      "description": "Preview or create one IPv4 WireGuard peer using its client-generated public key and a free tunnel IP. Use the legacy server networkconf _id. This tool never accepts the client private key and advertises no networks behind the client. Gateway allowed_ips is empty; configure destination AllowedIPs separately in the client. Requires local Network authentication and confirmation. MCP previews read live state; API action previews show submitted arguments only.",
+      "name": "unifi_create_wireguard_peer",
+      "permission_action": "create",
+      "permission_category": "vpn_servers",
+      "schema": {
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "confirm": {
+              "default": false,
+              "title": "Confirm",
+              "type": "boolean"
+            },
+            "peer_data": {
+              "additionalProperties": false,
+              "properties": {
+                "interface_ip": {
+                  "description": "Peer IPv4 address inside the server subnet; omit /32",
+                  "title": "Interface Ip",
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 32,
+                  "minLength": 1,
+                  "title": "Name",
+                  "type": "string"
+                },
+                "public_key": {
+                  "description": "Base64 WireGuard public key generated on the developer's client",
+                  "title": "Public Key",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "interface_ip",
+                "public_key"
+              ],
+              "title": "WireGuardPeerCreate",
+              "type": "object"
+            },
+            "server_id": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id",
+            "peer_data"
+          ],
+          "title": "PeerCreateInput",
+          "type": "object"
+        },
+        "output": {
+          "additionalProperties": true,
+          "description": "Structured view of the existing UniFi MCP tool response contract.",
+          "properties": {
+            "data": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Successful result payload.",
+              "title": "Data"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Actionable error message for handled failures.",
+              "title": "Error"
+            },
+            "preview": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Mutation preview payload returned before confirmation.",
+              "title": "Preview"
+            },
+            "requires_confirmation": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when a mutation preview requires caller confirmation.",
+              "title": "Requires Confirmation"
+            },
+            "success": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when the tool call succeeded; false for handled errors.",
+              "title": "Success"
+            }
+          },
+          "title": "UniFiToolResponse",
+          "type": "object"
+        }
+      },
+      "title": "Create Wireguard Peer"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "auth_method": "local_only",
+      "description": "Preview or create an IPv4 WireGuard server, initially disabled, on a verified WAN interface. Checks subnet/listen-port conflicts against configured networks and uses the built-in Vpn zone. The server private key is generated internally and never returned. Configure firewall rules before enabling. Requires local Network authentication and confirmation; readback verifies persistence. MCP previews read live state; API action previews show submitted arguments only.",
+      "name": "unifi_create_wireguard_server",
+      "permission_action": "create",
+      "permission_category": "vpn_servers",
+      "schema": {
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "confirm": {
+              "default": false,
+              "title": "Confirm",
+              "type": "boolean"
+            },
+            "server_data": {
+              "additionalProperties": false,
+              "properties": {
+                "ip_subnet": {
+                  "description": "First usable IPv4 gateway and prefix, for example 10.77.31.1/24",
+                  "title": "Ip Subnet",
+                  "type": "string"
+                },
+                "local_port": {
+                  "maximum": 65535,
+                  "minimum": 1024,
+                  "title": "Local Port",
+                  "type": "integer"
+                },
+                "name": {
+                  "maxLength": 32,
+                  "minLength": 1,
+                  "title": "Name",
+                  "type": "string"
+                },
+                "wireguard_interface": {
+                  "default": "wan",
+                  "enum": [
+                    "wan",
+                    "wan2"
+                  ],
+                  "title": "Wireguard Interface",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "ip_subnet",
+                "local_port"
+              ],
+              "title": "WireGuardServerCreate",
+              "type": "object"
+            }
+          },
+          "required": [
+            "server_data"
+          ],
+          "title": "ServerCreateInput",
+          "type": "object"
+        },
+        "output": {
+          "additionalProperties": true,
+          "description": "Structured view of the existing UniFi MCP tool response contract.",
+          "properties": {
+            "data": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Successful result payload.",
+              "title": "Data"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Actionable error message for handled failures.",
+              "title": "Error"
+            },
+            "preview": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Mutation preview payload returned before confirmation.",
+              "title": "Preview"
+            },
+            "requires_confirmation": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when a mutation preview requires caller confirmation.",
+              "title": "Requires Confirmation"
+            },
+            "success": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when the tool call succeeded; false for handled errors.",
+              "title": "Success"
+            }
+          },
+          "title": "UniFiToolResponse",
+          "type": "object"
+        }
+      },
+      "title": "Create Wireguard Server"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "auth_method": "local_only",
       "description": "Create a new Wireless LAN (WLAN/SSID) with schema validation. Confirmed creates are read back and report exact persisted, dropped, and controller-coerced fields; a failed result may still identify a created WLAN for cleanup. Requires confirmation.",
       "name": "unifi_create_wlan",
       "permission_action": "create",
@@ -5588,6 +5865,208 @@
         }
       },
       "title": "Delete VPN Client"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "auth_method": "local_only",
+      "description": "Preview or revoke one WireGuard peer and verify it is absent. Requires local Network authentication and confirmation. Use server networkconf _id and peer _id from the WireGuard peer tool family. Revocation interrupts this peer's VPN access.",
+      "name": "unifi_delete_wireguard_peer",
+      "permission_action": "delete",
+      "permission_category": "vpn_servers",
+      "schema": {
+        "input": {
+          "properties": {
+            "confirm": {
+              "type": "boolean"
+            },
+            "peer_id": {
+              "type": "string"
+            },
+            "server_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id",
+            "peer_id"
+          ],
+          "type": "object"
+        },
+        "output": {
+          "additionalProperties": true,
+          "description": "Structured view of the existing UniFi MCP tool response contract.",
+          "properties": {
+            "data": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Successful result payload.",
+              "title": "Data"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Actionable error message for handled failures.",
+              "title": "Error"
+            },
+            "preview": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Mutation preview payload returned before confirmation.",
+              "title": "Preview"
+            },
+            "requires_confirmation": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when a mutation preview requires caller confirmation.",
+              "title": "Requires Confirmation"
+            },
+            "success": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when the tool call succeeded; false for handled errors.",
+              "title": "Success"
+            }
+          },
+          "title": "UniFiToolResponse",
+          "type": "object"
+        }
+      },
+      "title": "Delete Wireguard Peer"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "auth_method": "local_only",
+      "description": "Preview or delete a WireGuard server only after all its peers have been revoked. Use the legacy networkconf _id from unifi_list_vpn_servers, not an Integration API UUID. Requires local Network authentication and confirmation; verifies absence after deletion.",
+      "name": "unifi_delete_wireguard_server",
+      "permission_action": "delete",
+      "permission_category": "vpn_servers",
+      "schema": {
+        "input": {
+          "properties": {
+            "confirm": {
+              "type": "boolean"
+            },
+            "server_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id"
+          ],
+          "type": "object"
+        },
+        "output": {
+          "additionalProperties": true,
+          "description": "Structured view of the existing UniFi MCP tool response contract.",
+          "properties": {
+            "data": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Successful result payload.",
+              "title": "Data"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Actionable error message for handled failures.",
+              "title": "Error"
+            },
+            "preview": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Mutation preview payload returned before confirmation.",
+              "title": "Preview"
+            },
+            "requires_confirmation": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when a mutation preview requires caller confirmation.",
+              "title": "Requires Confirmation"
+            },
+            "success": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when the tool call succeeded; false for handled errors.",
+              "title": "Success"
+            }
+          },
+          "title": "UniFiToolResponse",
+          "type": "object"
+        }
+      },
+      "title": "Delete Wireguard Server"
     },
     {
       "annotations": {
@@ -14703,6 +15182,99 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
+      "auth_method": "local_only",
+      "description": "Read fresh WireGuard peers using a legacy server networkconf _id from unifi_list_vpn_servers. Returned peer _ids are scoped to these WireGuard peer tools; do not pass public API UUIDs. Private keys and other controller secrets are excluded. Requires local Network authentication.",
+      "name": "unifi_list_wireguard_peers",
+      "schema": {
+        "input": {
+          "properties": {
+            "server_id": {
+              "description": "Legacy WireGuard server networkconf _id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id"
+          ],
+          "type": "object"
+        },
+        "output": {
+          "additionalProperties": true,
+          "description": "Structured view of the existing UniFi MCP tool response contract.",
+          "properties": {
+            "data": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Successful result payload.",
+              "title": "Data"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Actionable error message for handled failures.",
+              "title": "Error"
+            },
+            "preview": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Mutation preview payload returned before confirmation.",
+              "title": "Preview"
+            },
+            "requires_confirmation": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when a mutation preview requires caller confirmation.",
+              "title": "Requires Confirmation"
+            },
+            "success": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when the tool call succeeded; false for handled errors.",
+              "title": "Success"
+            }
+          },
+          "title": "UniFiToolResponse",
+          "type": "object"
+        }
+      },
+      "title": "List Wireguard Peers"
+    },
+    {
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "auth_method": "either",
       "description": "List configured Wireless LANs (WLANs) on the Unifi Network controller.\n\nFilters: search (SSID name substring), enabled_only, limit (default 25). API-key inventory uses legacy reads when supported, otherwise limited public inventory. Public results include source_api=integration and integration_id; missing legacy fields are unknown. These IDs are scoped to the Integration inventory tool family \u2014 do not pass them to other resource tools. Full details and mutations can require session credentials.",
       "name": "unifi_list_wlans",
@@ -21381,6 +21953,109 @@
         }
       },
       "title": "Update VPN Server State"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "auth_method": "local_only",
+      "description": "Preview or enable/disable a WireGuard server using its legacy networkconf _id. Current values are automatically preserved by a fresh fetch-merge-put; only enabled changes. Requires local Network authentication and confirmation. Review firewall access before enabling.",
+      "name": "unifi_update_wireguard_server_state",
+      "permission_action": "update",
+      "permission_category": "vpn_servers",
+      "schema": {
+        "input": {
+          "properties": {
+            "confirm": {
+              "type": "boolean"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "server_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        "output": {
+          "additionalProperties": true,
+          "description": "Structured view of the existing UniFi MCP tool response contract.",
+          "properties": {
+            "data": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Successful result payload.",
+              "title": "Data"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Actionable error message for handled failures.",
+              "title": "Error"
+            },
+            "preview": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Mutation preview payload returned before confirmation.",
+              "title": "Preview"
+            },
+            "requires_confirmation": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when a mutation preview requires caller confirmation.",
+              "title": "Requires Confirmation"
+            },
+            "success": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "True when the tool call succeeded; false for handled errors.",
+              "title": "Success"
+            }
+          },
+          "title": "UniFiToolResponse",
+          "type": "object"
+        }
+      },
+      "title": "Update Wireguard Server State"
     },
     {
       "annotations": {

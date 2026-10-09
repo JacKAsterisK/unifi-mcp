@@ -1,4 +1,4 @@
-# Network Server Tool Reference (209 tools)
+# Network Server Tool Reference (215 tools)
 
 Complete reference for `unifi_*` tools. All read tools are always available. Mutating tools require permissions (see main skill for details). Permission variables use the server's config keys (`CLIENT_GROUPS`, `FIREWALL_POLICIES`, `OON_POLICIES`), not the `permission_category` shorthand in `tools_manifest.json` (`client_group`, `firewall`, `oon_policy`); a denied tool's error names the exact variable to set.
 
@@ -328,6 +328,26 @@ Manage the controller's native Dynamic DNS provider entries (Settings → Intern
 - State changes take effect immediately — active tunnels will be disrupted
 
 ---
+
+## WireGuard Provisioning
+
+<!-- AUTO:tools:wireguard -->
+6 tools.
+
+| Tool | Type | Description |
+|------|------|-------------|
+| `unifi_list_wireguard_peers` | Read | Read fresh WireGuard peers using a legacy server networkconf _id from unifi_list_vpn_servers. |
+| `unifi_create_wireguard_peer` | Mutate | Preview or create one IPv4 WireGuard peer using its client-generated public key and a free tunnel IP. |
+| `unifi_create_wireguard_server` | Mutate | Preview or create an IPv4 WireGuard server, initially disabled, on a verified WAN interface. |
+| `unifi_delete_wireguard_peer` | Mutate | Preview or revoke one WireGuard peer and verify it is absent. |
+| `unifi_delete_wireguard_server` | Mutate | Preview or delete a WireGuard server only after all its peers have been revoked. |
+| `unifi_update_wireguard_server_state` | Mutate | Preview or enable/disable a WireGuard server using its legacy networkconf _id. |
+<!-- /AUTO:tools:wireguard -->
+
+These IPv4 provisioning tools use legacy networkconf server IDs and V2 peer IDs.
+Create the server disabled, review Vpn-zone firewall isolation, then enable it.
+The developer supplies only a client-generated public key. Gateway peer
+`allowed_ips` stays empty; client destination routes are configured separately.
 
 ## Routing
 
