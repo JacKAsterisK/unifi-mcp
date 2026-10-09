@@ -252,3 +252,33 @@ class FirewallPolicyOrdering:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+@strawberry.type(
+    description=(
+        "Complete V2 controller policy ordering for a zone pair. Custom policy IDs are "
+        "ObjectIDs scoped to the V2 policy family, portable to firewallPolicies and V2 "
+        "policy CRUD. Do not use Integration ordering UUIDs. predefinedIds are read-only context."
+    )
+)
+class V2FirewallPolicyOrdering:
+    source_zone_id: str
+    destination_zone_id: str
+    before_predefined_ids: list[str]
+    after_predefined_ids: list[str]
+    predefined_ids: list[str]
+
+    @classmethod
+    def render_hint(cls, kind: str) -> dict:
+        return {"kind": kind, "display_columns": ["before_predefined_ids", "after_predefined_ids"]}
+
+    @classmethod
+    def from_manager_output(cls, obj: Any) -> "V2FirewallPolicyOrdering":
+        from unifi_core.network.models.firewall import V2FirewallPolicyOrdering as OrderingModel
+
+        raw = obj if isinstance(obj, dict) else {}
+        order = OrderingModel.model_validate({key: raw[key] for key in OrderingModel.model_fields})
+        return cls(**order.model_dump(), predefined_ids=list(raw.get("predefined_ids", [])))
+
+    def to_dict(self) -> dict:
+        return asdict(self)

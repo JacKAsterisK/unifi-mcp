@@ -6,6 +6,7 @@
 # tool: unifi_get_firewall_group_details
 # tool: unifi_list_firewall_zones
 # tool: unifi_get_firewall_policy_ordering
+# tool: unifi_get_v2_firewall_policy_ordering
 # tool: unifi_list_legacy_firewall_rules
 """
 
@@ -239,3 +240,28 @@ async def test_firewall_policy_ordering_detail(tmp_path, monkeypatch):
     assert body.get("errors") is None, body
     ordering = body["data"]["network"]["firewallPolicyOrdering"]["ordering"]
     assert ordering["beforeSystemDefined"] == ["allow-1"]
+
+
+@pytest.mark.asyncio
+async def test_v2_firewall_ordering_uses_its_own_id_family(tmp_path, monkeypatch):
+    monkeypatch.setenv("UNIFI_API_DB_KEY", "k")
+    app, key, cid = await bootstrap(tmp_path, product="network")
+    order = {
+        "source_zone_id": "a" * 24,
+        "destination_zone_id": "b" * 24,
+        "before_predefined_ids": ["1" * 24],
+        "after_predefined_ids": [],
+        "predefined_ids": ["system-id"],
+    }
+    stub_managers(monkeypatch, {("network", "firewall_manager", "get_v2_firewall_policy_ordering"): order})
+    body = await graphql_query(
+        app,
+        key,
+        f'''{{
+        network {{ v2FirewallPolicyOrdering(controller: "{cid}", sourceZoneId: "{"a" * 24}",
+            destinationZoneId: "{"b" * 24}") {{ sourceZoneId destinationZoneId beforePredefinedIds
+            afterPredefinedIds predefinedIds }} }}
+    }}''',
+    )
+    assert body.get("errors") is None, body
+    assert body["data"]["network"]["v2FirewallPolicyOrdering"]["beforePredefinedIds"] == ["1" * 24]

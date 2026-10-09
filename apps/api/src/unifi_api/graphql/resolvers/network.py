@@ -57,6 +57,7 @@ from unifi_api.graphql.types.network.firewall import (
     FirewallRule,
     FirewallZone,
     LegacyFirewallRule,
+    V2FirewallPolicyOrdering,
 )
 from unifi_api.graphql.types.network.gateway_settings import GatewaySettings
 from unifi_api.graphql.types.network.mdns import MdnsSettings
@@ -2910,6 +2911,30 @@ class NetworkQuery:
             destination_firewall_zone_id,
         )
         return FirewallPolicyOrdering.from_manager_output(raw)
+
+    @strawberry.field(
+        permission_classes=[IsRead],
+        description=(
+            "Read fresh V2 policy ordering for a zone pair, including disabled custom rules. "
+            "These IDs are scoped to the V2 controller policy family — do not pass them to "
+            "Integration ordering tools. Requires local session credentials; bypasses ordering caches."
+        ),
+    )
+    async def v2_firewall_policy_ordering(
+        self,
+        info: Info,
+        controller: strawberry.ID,
+        source_zone_id: str,
+        destination_zone_id: str,
+        site: str = "default",
+    ) -> V2FirewallPolicyOrdering:
+        ctx: GraphQLContext = info.context
+        async with ctx.sessionmaker() as session:
+            mgr = await ctx.manager_factory.get_domain_manager(
+                session, controller, "network", "firewall_manager", site=site
+            )
+            raw = await mgr.get_v2_firewall_policy_ordering(source_zone_id, destination_zone_id)
+        return V2FirewallPolicyOrdering.from_manager_output(raw)
 
     # ---- QoS domain ------------------------------------------------------
 

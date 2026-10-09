@@ -109,3 +109,21 @@ before any further mutation. No uncertain write is automatically replayed or
 switched to another API/authentication route. Readback mismatches may leave a
 partially applied resource; inspect the result and use the revoke/delete tools
 for an explicitly reviewed rollback.
+
+## V2 firewall policy ordering
+
+Use `unifi_get_v2_firewall_policy_ordering` and
+`unifi_reorder_v2_firewall_policies` for policies returned by
+`unifi_list_firewall_policies`. These tools use the local-session V2 API with
+controller ObjectIDs. The older Integration ordering tools use UUIDs and can
+return different policy membership; never mix the two families or map policies
+by name.
+
+The V2 read returns complete `before_predefined_ids` and `after_predefined_ids`
+for one zone pair. Preserve every custom policy exactly once, including disabled
+policies. `predefined_ids` are context only and cannot be submitted. Reads and
+mutation preflight bypass cached inventory. Confirmation sends one batch-reorder
+request and verifies fresh ordering; a transport failure or unverified order
+returns an unknown outcome that requires inspection before another write.
+An unchanged order is a verified no-op. The contract was checked against the
+installed Network 10.6.106 UI; live mutation acceptance remains outstanding.

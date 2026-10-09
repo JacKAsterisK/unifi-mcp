@@ -33,6 +33,8 @@ TOOLS = READ_TOOLS + (
     "unifi_get_firewall_policy_details",
     "unifi_get_firewall_policy_ordering",
     "unifi_reorder_firewall_policies",
+    "unifi_get_v2_firewall_policy_ordering",
+    "unifi_reorder_v2_firewall_policies",
     "unifi_set_client_ip_settings",
     "unifi_list_port_profiles",
     "unifi_get_port_profile_details",

@@ -5406,6 +5406,34 @@
       }
     },
     {
+      "name": "unifi_get_v2_firewall_policy_ordering",
+      "product": "network",
+      "category": "firewall",
+      "permission_action": "read",
+      "read_only_hint": true,
+      "auth_method": "local_only",
+      "manager_attr": "firewall_manager",
+      "manager_method": "get_v2_firewall_policy_ordering",
+      "input_schema": {
+        "properties": {
+          "destination_zone_id": {
+            "description": "Destination V2 firewall zone ObjectID",
+            "type": "string"
+          },
+          "source_zone_id": {
+            "description": "Source V2 firewall zone ObjectID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_zone_id",
+          "destination_zone_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "unifi_get_voucher_details",
       "product": "network",
       "category": "hotspot",
@@ -6458,6 +6486,44 @@
           "source_firewall_zone_id",
           "destination_firewall_zone_id",
           "ordered_firewall_policy_ids"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "unifi_reorder_v2_firewall_policies",
+      "product": "network",
+      "category": "firewall_policies",
+      "permission_action": "update",
+      "read_only_hint": false,
+      "auth_method": "local_only",
+      "manager_attr": "firewall_manager",
+      "manager_method": "reorder_v2_firewall_policies",
+      "input_schema": {
+        "properties": {
+          "after_predefined_ids": {
+            "description": "Every custom V2 policy ordered after defaults",
+            "type": "array"
+          },
+          "before_predefined_ids": {
+            "description": "Every custom V2 policy ordered before defaults",
+            "type": "array"
+          },
+          "destination_zone_id": {
+            "description": "Destination V2 firewall zone ObjectID",
+            "type": "string"
+          },
+          "source_zone_id": {
+            "description": "Source V2 firewall zone ObjectID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_zone_id",
+          "destination_zone_id",
+          "before_predefined_ids",
+          "after_predefined_ids"
         ],
         "type": "object",
         "additionalProperties": false

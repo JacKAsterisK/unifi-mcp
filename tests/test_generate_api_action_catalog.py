@@ -387,7 +387,7 @@ def test_repository_catalog_is_complete_with_documented_exclusions() -> None:
 
     payload = json.loads(generator.render_catalog(REPO_ROOT))
 
-    assert len(payload["actions"]) == 292
+    assert len(payload["actions"]) == 294
     assert [item["name"] for item in payload["excluded"]] == [
         "access_subscribe_events",
         "protect_subscribe_events",
@@ -397,6 +397,11 @@ def test_repository_catalog_is_complete_with_documented_exclusions() -> None:
     excluded_by_name = {item["name"]: item["reason"] for item in payload["excluded"]}
     assert "controller-payload" in excluded_by_name["unifi_create_traffic_route"]
     by_name = {item["name"]: item for item in payload["actions"]}
+    for name in ("get_v2_firewall_policy_ordering", "reorder_v2_firewall_policies"):
+        assert (by_name["unifi_" + name]["manager_attr"], by_name["unifi_" + name]["manager_method"]) == (
+            "firewall_manager",
+            name,
+        )
     for name in (
         "create_wireguard_server",
         "create_wireguard_peer",

@@ -8,7 +8,7 @@ from unifi_core.exceptions import UniFiNotFoundError
 from unifi_api.auth.middleware import require_scope
 from unifi_api.auth.scopes import Scope
 from unifi_api.graphql.pydantic_export import to_pydantic_model
-from unifi_api.graphql.types.network.firewall import FirewallPolicyOrdering, FirewallRule
+from unifi_api.graphql.types.network.firewall import FirewallPolicyOrdering, FirewallRule, V2FirewallPolicyOrdering
 from unifi_api.routes.resources._common import (
     require_capability,
     resolve_controller,
@@ -171,4 +171,35 @@ async def get_firewall_policy_ordering(
     return {
         "data": data,
         "render_hint": hint,
+    }
+
+
+@router.get(
+    "/sites/{site_id}/firewall/v2-policy-ordering",
+    response_model=Detail[to_pydantic_model(V2FirewallPolicyOrdering)],
+    dependencies=[Depends(require_scope(Scope.READ))],
+    tags=["network/firewall"],
+    summary="Read fresh firewall ordering for a V2 controller zone pair",
+    description=(
+        "Returns complete before_predefined_ids and after_predefined_ids using V2 ObjectIDs "
+        "scoped to the V2 policy family, portable to /firewall/rules. Never use Integration "
+        "ordering UUIDs. Requires local session credentials; bypasses ordering caches."
+    ),
+)
+async def get_v2_firewall_policy_ordering(
+    request: Request,
+    site_id: str,
+    source_zone_id: str = Query(...),
+    destination_zone_id: str = Query(...),
+    controller=Depends(resolve_controller),
+) -> dict:
+    require_capability(controller, "network")
+    factory = request.app.state.manager_factory
+    sm = request.app.state.sessionmaker
+    async with sm() as session:
+        mgr = await factory.get_domain_manager(session, controller.id, "network", "firewall_manager", site=site_id)
+        raw = await mgr.get_v2_firewall_policy_ordering(source_zone_id, destination_zone_id)
+    return {
+        "data": V2FirewallPolicyOrdering.from_manager_output(raw).to_dict(),
+        "render_hint": V2FirewallPolicyOrdering.render_hint("detail"),
     }

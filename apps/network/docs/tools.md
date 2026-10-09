@@ -1,6 +1,6 @@
 # Tool Catalog
 
-The UniFi Network MCP server exposes 215 tools, all prefixed with `unifi_`. Read-only tools are always available. Mutating tools are controlled by the [permission system](permissions.md).
+The UniFi Network MCP server exposes 217 tools, all prefixed with `unifi_`. Read-only tools are always available. Mutating tools are controlled by the [permission system](permissions.md).
 
 Standard MCP clients should use `tools/list` for currently registered tools. For compact manifest-backed metadata in lazy workflows, call the `unifi_tool_index` compatibility meta-tool at runtime, or inspect `src/unifi_network_mcp/tools_manifest.json`. In `meta_only` mode, the index initially contains only meta-tools; executing a known domain tool lazily registers its module, so later index results can include those loaded tools.
 
@@ -13,13 +13,18 @@ These are always registered regardless of mode:
 - `unifi_batch` — Execute multiple tools in parallel
 - `unifi_batch_status` — Check batch job status
 
-## Firewall (15 tools)
+## Firewall (20 tools)
 
 - `unifi_list_firewall_policies` — List all firewall policies
 - `unifi_get_firewall_policy_details` — Get policy details by ID
 - `unifi_toggle_firewall_policy` — Enable/disable a policy
 - `unifi_create_firewall_policy` — Create a V2 zone-based policy with schema validation
 - `unifi_update_firewall_policy` — Update policy fields
+- `unifi_delete_firewall_policy` — Delete one custom V2 policy
+- `unifi_get_firewall_policy_ordering` — Read Integration ordering (UUID family; API key required)
+- `unifi_reorder_firewall_policies` — Reorder the complete Integration policy set
+- `unifi_get_v2_firewall_policy_ordering` — Read fresh V2 ordering for one zone pair (controller ObjectID family)
+- `unifi_reorder_v2_firewall_policies` — Preview or reorder the complete V2 policy set, with fresh readback verification
 - `unifi_list_firewall_zones` — List firewall zones (V2 API)
 - `unifi_create_firewall_zone` — Create a custom firewall zone
 - `unifi_update_firewall_zone` — Rename a custom firewall zone
@@ -30,6 +35,12 @@ These are always registered regardless of mode:
 - `unifi_create_firewall_group` — Create a new address or port group
 - `unifi_update_firewall_group` — Update an existing group
 - `unifi_delete_firewall_group` — Delete a group
+
+V2 ordering IDs are portable to V2 policy CRUD tools; Integration ordering UUIDs
+are scoped to their own family. Never translate policies by name. Preserve every
+custom policy in a zone pair, including disabled policies, and omit predefined
+IDs from reorder inputs. The V2 family requires local session credentials and
+does not need an API key. Inspect fresh ordering after any unverified mutation.
 
 ## Gateway Settings (2 tools)
 

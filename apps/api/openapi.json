@@ -2026,6 +2026,31 @@
         "title": "Detail[UserModel]",
         "type": "object"
       },
+      "Detail_V2FirewallPolicyOrderingModel_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/V2FirewallPolicyOrderingModel"
+          },
+          "render_hint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Render Hint"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Detail[V2FirewallPolicyOrderingModel]",
+        "type": "object"
+      },
       "Detail_VoucherModel_": {
         "additionalProperties": true,
         "properties": {
@@ -9194,6 +9219,42 @@
         "title": "UserModel",
         "type": "object"
       },
+      "V2FirewallPolicyOrderingModel": {
+        "additionalProperties": true,
+        "properties": {
+          "after_predefined_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "After Predefined Ids",
+            "type": "array"
+          },
+          "before_predefined_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Before Predefined Ids",
+            "type": "array"
+          },
+          "destination_zone_id": {
+            "title": "Destination Zone Id",
+            "type": "string"
+          },
+          "predefined_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Predefined Ids",
+            "type": "array"
+          },
+          "source_zone_id": {
+            "title": "Source Zone Id",
+            "type": "string"
+          }
+        },
+        "title": "V2FirewallPolicyOrderingModel",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -16188,6 +16249,85 @@
           }
         },
         "summary": "Get Firewall Rule",
+        "tags": [
+          "network/firewall"
+        ]
+      }
+    },
+    "/v1/sites/{site_id}/firewall/v2-policy-ordering": {
+      "get": {
+        "description": "Returns complete before_predefined_ids and after_predefined_ids using V2 ObjectIDs scoped to the V2 policy family, portable to /firewall/rules. Never use Integration ordering UUIDs. Requires local session credentials; bypasses ordering caches.",
+        "operationId": "get_v2_firewall_policy_ordering_v1_sites__site_id__firewall_v2_policy_ordering_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_id",
+            "required": true,
+            "schema": {
+              "title": "Site Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_zone_id",
+            "required": true,
+            "schema": {
+              "title": "Source Zone Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "destination_zone_id",
+            "required": true,
+            "schema": {
+              "title": "Destination Zone Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Controller UUID; omit to use default",
+            "in": "query",
+            "name": "controller",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Controller UUID; omit to use default",
+              "title": "Controller"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail_V2FirewallPolicyOrderingModel_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read fresh firewall ordering for a V2 controller zone pair",
         "tags": [
           "network/firewall"
         ]

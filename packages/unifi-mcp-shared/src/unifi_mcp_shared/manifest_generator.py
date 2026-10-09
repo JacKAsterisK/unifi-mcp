@@ -49,7 +49,7 @@ def _build_module_map(
         logger.warning("Tools directory not found at %s", tools_dir)
         return tool_map
 
-    pattern = re.compile(rf'name\s*=\s*["\']({re.escape(tool_prefix)}[a-z_]+)["\']')
+    pattern = re.compile(rf'name\s*=\s*["\']({re.escape(tool_prefix)}[a-z0-9_]+)["\']')
 
     for tool_file in tools_dir.glob("*.py"):
         if tool_file.name.startswith("_"):

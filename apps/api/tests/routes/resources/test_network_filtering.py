@@ -247,6 +247,36 @@ async def test_get_firewall_policy_ordering_happy_path(tmp_path, monkeypatch) ->
 
 
 @pytest.mark.asyncio
+async def test_get_v2_firewall_ordering_happy_path(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("UNIFI_API_DB_KEY", "k")
+    app, key, cid = await _bootstrap(tmp_path)
+    _stub_connection(app, cid)
+    from unifi_core.network.managers.firewall_manager import FirewallManager
+
+    order = {
+        "source_zone_id": "a" * 24,
+        "destination_zone_id": "b" * 24,
+        "before_predefined_ids": ["1" * 24],
+        "after_predefined_ids": [],
+        "predefined_ids": ["system-id"],
+    }
+
+    async def fake_get(self, source_zone_id, destination_zone_id):
+        assert (source_zone_id, destination_zone_id) == ("a" * 24, "b" * 24)
+        return order
+
+    monkeypatch.setattr(FirewallManager, "get_v2_firewall_policy_ordering", fake_get)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/sites/default/firewall/v2-policy-ordering?controller={cid}",
+            params={"source_zone_id": "a" * 24, "destination_zone_id": "b" * 24},
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["data"] == order
+
+
+@pytest.mark.asyncio
 async def test_list_qos_rules_happy_path(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("UNIFI_API_DB_KEY", "k")
     app, key, cid = await _bootstrap(tmp_path)

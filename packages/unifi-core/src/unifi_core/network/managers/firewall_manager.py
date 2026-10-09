@@ -10,7 +10,7 @@ from aiounifi.models.port_forward import PortForward
 from aiounifi.models.traffic_route import TrafficRoute
 
 from unifi_core.auth import UniFiAuth
-from unifi_core.exceptions import UniFiAuthError, UniFiNotFoundError, UniFiOperationError
+from unifi_core.exceptions import UniFiAuthError, UniFiNotFoundError, UniFiOperationError, UniFiValidationError
 from unifi_core.merge import deep_merge
 from unifi_core.network.managers.connection_manager import ConnectionManager
 from unifi_core.network.managers.network_manager import NetworkManager
@@ -22,6 +22,8 @@ from unifi_core.network.managers.traffic_route_manager import (
 )
 from unifi_core.network.models.firewall import (
     RETIRABLE_SELECTORS,
+    V2FirewallPolicyOrdering,
+    V2FirewallZonePair,
     _normalize_endpoint_macs,
     normalize_policy_endpoint_enums,
     prepare_policy_update,
@@ -423,6 +425,142 @@ class FirewallManager:
         except Exception as e:
             logger.error("Error updating firewall policy %s: %s", policy_id, e, exc_info=True)
             raise
+
+    async def get_v2_firewall_policy_ordering(self, source_zone_id: str, destination_zone_id: str) -> Dict[str, Any]:
+        """Read a complete V2 zone-pair order, bypassing policy/zone caches.
+
+        The controller UI places custom policies around the predefined block
+        using each policy's index. Synthetic predefined IDs are returned for
+        context only and must never be included in a batch-reorder payload.
+        """
+        pair = V2FirewallZonePair(source_zone_id=source_zone_id, destination_zone_id=destination_zone_id)
+        if not await self._connection.ensure_session_connected():
+            raise UniFiAuthError("V2 firewall ordering requires local session credentials.")
+        try:
+            zones = await self._get_v2_zones_full(force_refresh=True)
+            zone_ids = {zone.get("_id") for zone in zones if isinstance(zone, dict)}
+            if pair.source_zone_id not in zone_ids or pair.destination_zone_id not in zone_ids:
+                raise UniFiValidationError("V2 ordering requires two existing V2 firewall zones.")
+            response = await self._connection.request(ApiRequestV2(method="get", path="/firewall-policies"))
+            rows = (
+                response if isinstance(response, list) else response.get("data") if isinstance(response, dict) else None
+            )
+            if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+                raise RuntimeError("Invalid V2 firewall policy inventory.")
+            policies = []
+            for row in rows:
+                source, destination = row.get("source"), row.get("destination")
+                if not isinstance(source, dict) or not isinstance(destination, dict):
+                    raise RuntimeError("Invalid V2 firewall policy zone targeting.")
+                if source.get("zone_id") == source_zone_id and destination.get("zone_id") == destination_zone_id:
+                    if (
+                        not isinstance(row.get("_id"), str)
+                        or not row["_id"]
+                        or type(row.get("index")) is not int
+                        or row["index"] < 0
+                        or type(row.get("predefined")) is not bool
+                    ):
+                        raise RuntimeError("Invalid V2 firewall policy ordering metadata.")
+                    policies.append(row)
+            policies.sort(key=lambda row: (row["index"], row["_id"]))
+            if len({row["_id"] for row in policies}) != len(policies):
+                raise RuntimeError("Duplicate IDs in V2 firewall policy inventory.")
+            predefined = [row for row in policies if row["predefined"]]
+            if not predefined:
+                raise RuntimeError(
+                    "V2 zone-pair order has no predefined boundary; cannot safely classify custom rules."
+                )
+            boundary = predefined[0]["index"]
+            before = [row["_id"] for row in policies if not row["predefined"] and row["index"] < boundary]
+            after = [row["_id"] for row in policies if not row["predefined"] and row["index"] > boundary]
+            custom = [row for row in policies if not row["predefined"]]
+            if len({row["index"] for row in custom}) != len(custom) or any(row["index"] == boundary for row in custom):
+                raise RuntimeError("Ambiguous V2 custom policy order.")
+            order = V2FirewallPolicyOrdering(
+                source_zone_id=source_zone_id,
+                destination_zone_id=destination_zone_id,
+                before_predefined_ids=before,
+                after_predefined_ids=after,
+            )
+            return {**order.model_dump(), "predefined_ids": [row["_id"] for row in predefined]}
+        except UniFiValidationError:
+            raise
+        except Exception as error:
+            logger.error("Failed to read V2 firewall policy ordering: %s", type(error).__name__)
+            raise UniFiOperationError(f"Failed to read V2 firewall policy ordering ({type(error).__name__}).") from None
+
+    async def preview_v2_firewall_policy_ordering(
+        self,
+        source_zone_id: str,
+        destination_zone_id: str,
+        before_predefined_ids: List[str],
+        after_predefined_ids: List[str],
+    ) -> Dict[str, Any]:
+        """Validate complete membership against a fresh V2 zone-pair read."""
+        requested = V2FirewallPolicyOrdering(
+            source_zone_id=source_zone_id,
+            destination_zone_id=destination_zone_id,
+            before_predefined_ids=before_predefined_ids,
+            after_predefined_ids=after_predefined_ids,
+        ).model_dump()
+        current = await self.get_v2_firewall_policy_ordering(source_zone_id, destination_zone_id)
+        current_ids = set(current["before_predefined_ids"] + current["after_predefined_ids"])
+        requested_ids = set(before_predefined_ids + after_predefined_ids)
+        if current_ids != requested_ids:
+            raise ValueError(
+                "V2 reorder must preserve every custom policy ID in this zone pair exactly once; "
+                "predefined, foreign-zone and Integration IDs are not accepted. Refresh the V2 ordering."
+            )
+        return {"current": current, "requested": requested}
+
+    async def reorder_v2_firewall_policies(
+        self,
+        source_zone_id: str,
+        destination_zone_id: str,
+        before_predefined_ids: List[str],
+        after_predefined_ids: List[str],
+    ) -> Dict[str, Any]:
+        """Submit one V2 reorder, then verify fresh reads; never replay a write."""
+        preview = await self.preview_v2_firewall_policy_ordering(
+            source_zone_id, destination_zone_id, before_predefined_ids, after_predefined_ids
+        )
+        current, requested = preview["current"], preview["requested"]
+        if all(current[key] == value for key, value in requested.items()):
+            return {"success": True, "mutation_applied": False, "verified": True, "ordering": current}
+        try:
+            await self._connection.request(
+                ApiRequestV2(method="put", path="/firewall-policies/batch-reorder", data=requested)
+            )
+        except Exception as error:
+            logger.error("Failed to submit V2 firewall policy reorder: %s", type(error).__name__)
+            return {
+                "success": False,
+                "mutation_applied": None,
+                "verified": False,
+                "error": f"Failed to submit V2 firewall policy reorder ({type(error).__name__}). "
+                "Outcome is unknown; inspect fresh ordering before another write.",
+            }
+        finally:
+            self._connection._invalidate_cache(CACHE_PREFIX_FIREWALL_POLICIES)
+            self._connection._invalidate_cache(CACHE_PREFIX_FIREWALL_POLICY_ORDERING)
+        after = None
+        for attempt in range(FIREWALL_ZONE_WRITE_VERIFY_ATTEMPTS):
+            try:
+                after = await self.get_v2_firewall_policy_ordering(source_zone_id, destination_zone_id)
+                if all(after[key] == value for key, value in requested.items()):
+                    return {"success": True, "mutation_applied": True, "verified": True, "ordering": after}
+            except Exception as error:
+                logger.warning("Failed to verify V2 firewall policy reorder: %s", type(error).__name__)
+            if attempt + 1 < FIREWALL_ZONE_WRITE_VERIFY_ATTEMPTS:
+                await asyncio.sleep(FIREWALL_ZONE_WRITE_VERIFY_DELAY_SECONDS)
+        return {
+            "success": False,
+            "mutation_applied": None,
+            "verified": False,
+            "ordering": after,
+            "error": "V2 firewall reorder was submitted but the requested order was not verified. "
+            "Inspect fresh ordering before another write; no rollback or replay was attempted.",
+        }
 
     async def get_firewall_policy_ordering(
         self,
@@ -989,7 +1127,7 @@ class FirewallManager:
 
     # ---- Firewall Zone CRUD (integration API) ----
 
-    async def _get_v2_zones_full(self) -> List[Dict[str, Any]]:
+    async def _get_v2_zones_full(self, *, force_refresh: bool = False) -> List[Dict[str, Any]]:
         """Return the full V2 firewall-zone list (``/firewall/zone``).
 
         ``get_firewall_zones()`` reads ``/firewall/zone-matrix``, which strips
@@ -1000,7 +1138,7 @@ class FirewallManager:
         """
         cache_key = f"{CACHE_PREFIX_FIREWALL_ZONES}_full_{self._connection.site}"
         cached = self._connection.get_cached(cache_key)
-        if isinstance(cached, list):
+        if not force_refresh and isinstance(cached, list):
             return cached
         if not await self._connection.ensure_connected():
             raise ConnectionError("Not connected to controller")

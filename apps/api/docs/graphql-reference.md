@@ -1421,6 +1421,11 @@ type NetworkQuery {
   """
   firewallPolicyOrdering(controller: ID!, sourceFirewallZoneId: String!, destinationFirewallZoneId: String!, site: String! = "default"): FirewallPolicyOrdering!
 
+  """
+  Read fresh V2 policy ordering for a zone pair, including disabled custom rules. These IDs are scoped to the V2 controller policy family — do not pass them to Integration ordering tools. Requires local session credentials; bypasses ordering caches.
+  """
+  v2FirewallPolicyOrdering(controller: ID!, sourceZoneId: String!, destinationZoneId: String!, site: String! = "default"): V2FirewallPolicyOrdering!
+
   """List QoS rules on the given controller/site (paginated)."""
   qosRules(controller: ID!, site: String! = "default", limit: Int! = 50, cursor: String = null): QosRulePage!
 
@@ -2362,6 +2367,17 @@ type UserPage {
   nextCursor: String
 }
 
+"""
+Complete V2 controller policy ordering for a zone pair. Custom policy IDs are ObjectIDs scoped to the V2 policy family, portable to firewallPolicies and V2 policy CRUD. Do not use Integration ordering UUIDs. predefinedIds are read-only context.
+"""
+type V2FirewallPolicyOrdering {
+  sourceZoneId: String!
+  destinationZoneId: String!
+  beforePredefinedIds: [String!]!
+  afterPredefinedIds: [String!]!
+  predefinedIds: [String!]!
+}
+
 """Wrapper for protect_list_viewers — {viewers, count}."""
 type ViewerList {
   viewers: JSON
@@ -2677,6 +2693,7 @@ Read-only access to UniFi Network resources.
 - `trafficRoutes: TrafficRoutePage!`  — List traffic-route policies (V2 /trafficroutes) (paginated).
 - `userGroup: UserGroup`  — Look up a single QoS user group by id.
 - `userGroups: UserGroupPage!`  — List QoS user groups (V1 /rest/usergroup) on the given controller/site (paginated).
+- `v2FirewallPolicyOrdering: V2FirewallPolicyOrdering!`  — Read fresh V2 policy ordering for a zone pair, including disabled custom rules. These IDs are scoped to the V2 controller policy family — do not pass them to Integration ordering tools. Requires local session credentials; bypasses ordering caches.
 - `voucher: Voucher`  — Look up a single hotspot voucher by id.
 - `vouchers: VoucherPage!`  — List hotspot vouchers on the given controller/site (paginated).
 - `vpnClient: VpnClient`  — Look up a single VPN client by id.

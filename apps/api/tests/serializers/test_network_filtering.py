@@ -99,6 +99,7 @@ def test_firewall_mutation_ack_dispatches_for_all_mutations() -> None:
         "unifi_delete_firewall_policy",
         "unifi_toggle_firewall_policy",
         "unifi_reorder_firewall_policies",
+        "unifi_reorder_v2_firewall_policies",
         "unifi_create_firewall_group",
         "unifi_update_firewall_group",
         "unifi_delete_firewall_group",
@@ -109,6 +110,24 @@ def test_firewall_mutation_ack_dispatches_for_all_mutations() -> None:
         s = reg.serializer_for_tool(tool)
         out = s.serialize_action(True, tool_name=tool)
         assert out["render_hint"]["kind"] == "detail"
+
+
+def test_v2_ordering_projection_and_unknown_mutation_outcome_are_preserved() -> None:
+    from unifi_api.graphql.types.network.firewall import V2FirewallPolicyOrdering
+
+    order = {
+        "source_zone_id": "a" * 24,
+        "destination_zone_id": "b" * 24,
+        "before_predefined_ids": ["1" * 24],
+        "after_predefined_ids": [],
+        "predefined_ids": ["synthetic-system-id"],
+    }
+    assert V2FirewallPolicyOrdering.from_manager_output(order).to_dict() == order
+    serializer = _registry().serializer_for_tool("unifi_reorder_v2_firewall_policies")
+    result = {"success": False, "mutation_applied": None, "verified": False, "ordering": order}
+    out = serializer.serialize_action(result, tool_name="unifi_reorder_v2_firewall_policies")
+    assert out["data"]["mutation_applied"] is None
+    assert out["data"]["verified"] is False
 
 
 def test_create_firewall_zone_ack_uses_canonical_v2_shape() -> None:

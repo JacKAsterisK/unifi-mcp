@@ -8,11 +8,13 @@ from collections import Counter
 from typing import Annotated, Any, Dict, Optional
 
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from unifi_core.confirmation import create_preview, delete_preview, toggle_preview, update_preview
 from unifi_core.network.models.firewall import (
     FirewallGroup,
+    V2FirewallPolicyOrdering,
+    V2FirewallZonePair,
     firewall_group_from_controller,
     firewall_zone_from_controller,
     legacy_firewall_rule_from_controller,
@@ -798,6 +800,93 @@ async def reorder_firewall_policies(
     except Exception as e:
         logger.error("Error reordering firewall policies: %s", e, exc_info=True)
         return {"success": False, "error": f"Failed to reorder firewall policies: {e}"}
+
+
+@server.tool(
+    name="unifi_get_v2_firewall_policy_ordering",
+    auth="local_only",
+    description=(
+        "Read fresh V2 firewall policy ordering for one source/destination zone pair. "
+        "Zone IDs come from unifi_list_firewall_zones; custom policy IDs come from "
+        "unifi_list_firewall_policies. These are V2 controller ObjectIDs scoped to the "
+        "V2 policy tool family — do not pass them to Integration ordering tools. "
+        "Returns complete before_predefined_ids and after_predefined_ids arrays, including "
+        "disabled custom policies. predefined_ids are read-only context. Requires local "
+        "session credentials. Does not use an Integration API key or cached policy inventory."
+    ),
+    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+)
+async def get_v2_firewall_policy_ordering(
+    source_zone_id: Annotated[str, Field(description="Source V2 firewall zone ObjectID")],
+    destination_zone_id: Annotated[str, Field(description="Destination V2 firewall zone ObjectID")],
+) -> Dict[str, Any]:
+    try:
+        pair = V2FirewallZonePair(source_zone_id=source_zone_id, destination_zone_id=destination_zone_id)
+        ordering = await firewall_manager.get_v2_firewall_policy_ordering(**pair.model_dump())
+        return {"success": True, "ordering": ordering}
+    except ValidationError:
+        return {"success": False, "error": "V2 ordering requires lowercase 24-character hexadecimal zone ObjectIDs."}
+    except Exception as error:
+        logger.error("Failed to get V2 firewall policy ordering: %s", type(error).__name__)
+        return {"success": False, "error": f"Failed to get V2 firewall policy ordering ({type(error).__name__})."}
+
+
+@server.tool(
+    name="unifi_reorder_v2_firewall_policies",
+    auth="local_only",
+    description=(
+        "Reorder all custom V2 firewall policies for one source/destination zone pair "
+        "using the controller batch-reorder endpoint. Pass complete before_predefined_ids "
+        "and after_predefined_ids arrays from unifi_get_v2_firewall_policy_ordering, "
+        "preserving every custom policy exactly once, including disabled policies. "
+        "These IDs are scoped to the V2 policy tool family — do not pass Integration "
+        "ordering UUIDs or predefined policy IDs. Requires local session credentials "
+        "and confirmation. Preview and confirmed mutation recheck fresh membership. "
+        "A confirmed mutation reads back ordering; an unknown or unverified outcome "
+        "requires inspection before another write. No uncertain write is replayed."
+    ),
+    permission_category="firewall_policies",
+    permission_action="update",
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False),
+)
+async def reorder_v2_firewall_policies(
+    source_zone_id: Annotated[str, Field(description="Source V2 firewall zone ObjectID")],
+    destination_zone_id: Annotated[str, Field(description="Destination V2 firewall zone ObjectID")],
+    before_predefined_ids: Annotated[list[str], Field(description="Every custom V2 policy ordered before defaults")],
+    after_predefined_ids: Annotated[list[str], Field(description="Every custom V2 policy ordered after defaults")],
+    confirm: Annotated[bool, Field(description="Apply when true; otherwise return a fresh validated preview")] = False,
+) -> Dict[str, Any]:
+    try:
+        order = V2FirewallPolicyOrdering(
+            source_zone_id=source_zone_id,
+            destination_zone_id=destination_zone_id,
+            before_predefined_ids=before_predefined_ids,
+            after_predefined_ids=after_predefined_ids,
+        ).model_dump()
+        if not confirm:
+            preview = await firewall_manager.preview_v2_firewall_policy_ordering(**order)
+            return update_preview(
+                resource_type="v2_firewall_policy_ordering",
+                resource_id=f"{source_zone_id}->{destination_zone_id}",
+                resource_name="V2 firewall policy ordering",
+                current_state=preview["current"],
+                updates=preview["requested"],
+            )
+        return await firewall_manager.reorder_v2_firewall_policies(**order)
+    except ValidationError:
+        return {
+            "success": False,
+            "error": "V2 ordering requires lowercase 24-character hexadecimal ObjectIDs and no duplicate policy IDs.",
+        }
+    except ValueError:
+        return {
+            "success": False,
+            "error": "Failed to reorder V2 firewall policies: use existing V2 zones and preserve every custom "
+            "policy in the pair exactly once. Refresh with unifi_get_v2_firewall_policy_ordering.",
+        }
+    except Exception as error:
+        logger.error("Failed to reorder V2 firewall policies: %s", type(error).__name__)
+        return {"success": False, "error": f"Failed to reorder V2 firewall policies ({type(error).__name__})."}
 
 
 @server.tool(

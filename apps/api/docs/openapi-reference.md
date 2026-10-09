@@ -610,6 +610,22 @@ Returns the user-defined firewall policy ordering for a source/destination zone 
 
 **Returns:** `Detail_FirewallRuleModel_`
 
+### `GET /v1/sites/{site_id}/firewall/v2-policy-ordering` — Read fresh firewall ordering for a V2 controller zone pair
+
+
+Returns complete before_predefined_ids and after_predefined_ids using V2 ObjectIDs scoped to the V2 policy family, portable to /firewall/rules. Never use Integration ordering UUIDs. Requires local session credentials; bypasses ordering caches.
+
+
+**Parameters:**
+
+- `site_id` (path) (required)
+- `source_zone_id` (query) (required)
+- `destination_zone_id` (query) (required)
+- `controller` (query)
+
+
+**Returns:** `Detail_V2FirewallPolicyOrderingModel_`
+
 ### `GET /v1/sites/{site_id}/firewall/zones` — List Firewall Zones
 
 

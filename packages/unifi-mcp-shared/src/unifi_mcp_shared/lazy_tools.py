@@ -70,7 +70,7 @@ def build_tool_module_map(
             content = tool_file.read_text()
 
             # Find tool names matching the configured prefix
-            pattern = rf'name\s*=\s*["\']({escaped_prefix}[a-z_]+)["\']'
+            pattern = rf'name\s*=\s*["\']({escaped_prefix}[a-z0-9_]+)["\']'
             matches = re.findall(pattern, content)
 
             for tool_name in matches:

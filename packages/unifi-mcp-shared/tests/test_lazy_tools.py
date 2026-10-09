@@ -61,6 +61,10 @@ async def list_clients():
 @server.tool(name="unifi_get_client")
 async def get_client():
     pass
+
+@server.tool(name="unifi_get_v2_policy")
+async def get_v2_policy():
+    pass
 """
         )
         (tools_dir / "devices.py").write_text(
@@ -88,7 +92,23 @@ async def list_devices():
             assert "unifi_list_devices" in result
             assert result["unifi_list_clients"] == "fake_tools.clients"
             assert result["unifi_list_devices"] == "fake_tools.devices"
+            assert result["unifi_get_v2_policy"] == "fake_tools.clients"
             assert "unifi_should_not_appear" not in result
+            from unifi_mcp_shared.manifest_generator import _build_module_map
+
+            # Build-time metadata and runtime lazy loading must agree on names
+            # that contain a version number.
+            manifest_root = tmp_path / "manifest"
+            manifest_tools = manifest_root / "src" / "fake_tools" / "tools"
+            manifest_tools.mkdir(parents=True)
+            (manifest_tools / "clients.py").write_text((tools_dir / "clients.py").read_text())
+            built = _build_module_map(
+                project_root=manifest_root,
+                package="fake_tools",
+                tool_prefix="unifi_",
+                logger=MagicMock(),
+            )
+            assert built["unifi_get_v2_policy"] == "fake_tools.tools.clients"
         finally:
             del sys.modules["fake_tools"]
 

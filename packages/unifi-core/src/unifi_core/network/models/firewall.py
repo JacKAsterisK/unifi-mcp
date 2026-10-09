@@ -28,9 +28,9 @@ FirewallZone.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, model_validator
 
 from unifi_core.mac import canonical_mac, looks_like_mac, normalize_mac
 from unifi_core.merge import deep_merge
@@ -38,6 +38,35 @@ from unifi_core.merge import deep_merge
 # ---------------------------------------------------------------------------
 # FirewallRule pydantic model
 # ---------------------------------------------------------------------------
+
+V2FirewallObjectId = Annotated[str, StringConstraints(strict=True, pattern=r"^[0-9a-f]{24}$")]
+
+
+class V2FirewallPolicyOrdering(BaseModel):
+    """Complete user-policy order for one V2 zone pair; no Integration UUIDs."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    source_zone_id: V2FirewallObjectId
+    destination_zone_id: V2FirewallObjectId
+    before_predefined_ids: list[V2FirewallObjectId]
+    after_predefined_ids: list[V2FirewallObjectId]
+
+    @model_validator(mode="after")
+    def unique_policy_ids(self) -> V2FirewallPolicyOrdering:
+        ids = self.before_predefined_ids + self.after_predefined_ids
+        if len(ids) != len(set(ids)):
+            raise ValueError("V2 ordering must not contain duplicate policy IDs")
+        return self
+
+
+class V2FirewallZonePair(BaseModel):
+    """V2 zone identifiers for a policy-ordering read."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    source_zone_id: V2FirewallObjectId
+    destination_zone_id: V2FirewallObjectId
 
 
 class FirewallRule(BaseModel):
