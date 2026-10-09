@@ -236,7 +236,7 @@ class SystemManager:
             raise RuntimeError("Failed to read mDNS settings") from None
 
     async def get_mdns_settings(self) -> MdnsSettings:
-        """Read site-wide mDNS services and read-only network scope."""
+        """Read site-wide mDNS services and projected network scope."""
         record = await self._fresh_mdns_record()
         try:
             return mdns_from_controller(record)
@@ -244,12 +244,31 @@ class SystemManager:
             logger.error("Failed to shape mDNS settings: %s", type(exc).__name__)
             raise RuntimeError("Failed to read mDNS settings") from None
 
-    async def _prepare_mdns_settings_update(self, update_data: Dict[str, Any]) -> tuple[dict, dict, dict]:
+    async def _fresh_mdns_scope_record(self) -> Dict[str, Any]:
+        """Network participation is owned by V2 global configuration, not /setting/mdns."""
+        try:
+            response = await self._connection.request(ApiRequestV2(method="get", path="/global/config/network"))
+            if (
+                not isinstance(response, list)
+                or len(response) != 1
+                or not isinstance(response[0], dict)
+                or not isinstance(response[0].get("mdns_enabled_for"), str)
+                or not isinstance(response[0].get("mdns_enabled_for_network_ids"), list)
+                or any(not isinstance(item, str) for item in response[0]["mdns_enabled_for_network_ids"])
+            ):
+                raise ValueError("invalid global network scope")
+            return response[0]
+        except Exception as exc:
+            logger.error("Failed to read mDNS network scope: %s", type(exc).__name__)
+            raise RuntimeError("Cannot verify mDNS network scope; no update attempted") from None
+
+    async def _prepare_mdns_settings_update(self, update_data: Dict[str, Any]) -> tuple[dict, dict, dict, dict | None]:
         updates = mdns_to_controller_update(update_data)
         before = await self._fresh_mdns_record()
         merged = deepcopy(before)
         merged.update(updates)
         validate_mdns_service_selection(merged)
+        global_before = None
         if "enabled_for_network_ids" in updates:
             if before.get("enabled_for") != "some":
                 raise ValueError("Network IDs can be updated only when mDNS network scope is already 'some'.")
@@ -271,11 +290,21 @@ class SystemManager:
             }
             if not set(updates["enabled_for_network_ids"]).issubset(eligible):
                 raise ValueError("mDNS network scope requires existing enabled gateway-routed LAN network IDs.")
-        return updates, before, merged
+            global_before = await self._fresh_mdns_scope_record()
+            if global_before["mdns_enabled_for"] != "some":
+                raise ValueError("Network IDs can be updated only when mDNS network scope is already 'some'.")
+            before = {
+                **before,
+                "enabled_for": global_before["mdns_enabled_for"],
+                "enabled_for_network_ids": global_before["mdns_enabled_for_network_ids"],
+            }
+            merged = deepcopy(global_before)
+            merged["mdns_enabled_for_network_ids"] = updates["enabled_for_network_ids"]
+        return updates, before, merged, global_before
 
     async def preview_mdns_settings_update(self, update_data: Dict[str, Any]) -> tuple[MdnsSettings, dict]:
         """Validate the same fresh service/scope state used by confirmed updates."""
-        updates, before, _ = await self._prepare_mdns_settings_update(update_data)
+        updates, before, _, _ = await self._prepare_mdns_settings_update(update_data)
         try:
             return mdns_from_controller(before), updates
         except Exception as exc:
@@ -283,7 +312,7 @@ class SystemManager:
             raise RuntimeError("Cannot read mDNS settings for preview") from None
 
     async def update_mdns_settings(self, update_data: Dict[str, Any]) -> WriteVerificationResult:
-        """Merge service fields into a fresh full record and verify the write."""
+        """Merge into the owning service or network-scope record and verify one write."""
         updates = mdns_to_controller_update(update_data)
         try:
             session_ready = await self._connection.ensure_session_connected()
@@ -293,7 +322,7 @@ class SystemManager:
         if not session_ready:
             raise RuntimeError("Updating mDNS settings requires Network session authentication")
         try:
-            updates, before, merged = await self._prepare_mdns_settings_update(updates)
+            updates, before, merged, global_before = await self._prepare_mdns_settings_update(updates)
         except ValueError as exc:
             return failed_write(str(exc), operation="update_mdns_settings")
         try:
@@ -306,7 +335,12 @@ class SystemManager:
 
         cache_key = f"{CACHE_PREFIX_SETTINGS}_mdns_{self._connection.site}"
         try:
-            await self._connection.request(ApiRequest(method="put", path="/set/setting/mdns", data=merged))
+            request = (
+                ApiRequestV2(method="put", path="/global/config/network", data=merged)
+                if global_before is not None
+                else ApiRequest(method="put", path="/set/setting/mdns", data=merged)
+            )
+            await self._connection.request(request)
         except Exception as exc:
             logger.error("Failed to update mDNS settings: %s", type(exc).__name__)
             if isinstance(exc, SettingsControllerRejection):
@@ -327,6 +361,25 @@ class SystemManager:
         # a returned write; only the fresh readback can establish persistence.
         try:
             after = await self._fresh_mdns_record()
+            if global_before is not None:
+                global_after = await self._fresh_mdns_scope_record()
+                after = {
+                    **after,
+                    "enabled_for": global_after["mdns_enabled_for"],
+                    "enabled_for_network_ids": global_after["mdns_enabled_for_network_ids"],
+                }
+                preserved = {
+                    key: value for key, value in global_before.items() if key != "mdns_enabled_for_network_ids"
+                }
+                preservation = verify_write(
+                    operation="update_mdns_settings", requested=preserved, before=global_before, after=global_after
+                )
+                if not preservation.success:
+                    return failed_write(
+                        "mDNS network scope write changed other global network settings; inspect configuration",
+                        operation="update_mdns_settings",
+                        mutation_applied=True,
+                    )
             public_after = mdns_from_controller(after).model_dump()
         except Exception:
             return failed_write(

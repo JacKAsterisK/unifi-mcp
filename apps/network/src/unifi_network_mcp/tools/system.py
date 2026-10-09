@@ -68,6 +68,7 @@ async def get_mdns_settings() -> Dict[str, Any]:
         "enabled_for remains read-only. When it is 'some', enabled_for_network_ids may replace the selected list "
         "with unique existing enabled gateway-routed LAN networkconf ObjectIDs from unifi_list_networks. "
         "These IDs are scoped to the legacy Network network tool family; do not use Integration API UUIDs. "
+        "Submit network scope separately from service fields; each update performs one write. "
         "Changes may affect service discovery. Requires confirmation."
     ),
     permission_category="system",

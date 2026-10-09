@@ -20,6 +20,16 @@ RECORD = {
 }
 
 
+def scope_record(record):
+    return {
+        "mdns_enabled_for": record["enabled_for"],
+        "mdns_enabled_for_network_ids": record["enabled_for_network_ids"],
+        "default_security_posture": "ALLOW_ALL",
+        "ipv6_pd_interfaces": [],
+        "future_setting": {"nested": [1]},
+    }
+
+
 @pytest.mark.parametrize(
     "bad",
     [
@@ -68,15 +78,20 @@ async def test_scope_update_preserves_services_unknown_fields_and_verifies_new_m
     wanted = ["a" * 24, "b" * 24]
     after = {**deepcopy(before), "enabled_for_network_ids": wanted}
     networks = [{"_id": item, "purpose": "corporate", "enabled": True, "ip_subnet": "10.0.1.1/24"} for item in wanted]
-    manager, conn = manager_and_connection([[before], networks, [], [after]])
+    global_before = scope_record(before)
+    global_after = scope_record(after)
+    manager, conn = manager_and_connection([[before], networks, [global_before], [], [after], [global_after]])
     result = await manager.update_mdns_settings({"enabled_for_network_ids": wanted})
     assert result.success and result.mutation_applied
     assert result.persisted_fields == ("enabled_for_network_ids",)
     assert conn.request.call_args_list[1].args[0].path == "/rest/networkconf"
-    sent = conn.request.call_args_list[2].args[0].data
-    assert sent == after
+    write = conn.request.call_args_list[3].args[0]
+    assert write.path == "/global/config/network"
+    assert write.full_path("default", True) == "/proxy/network/v2/api/site/default/global/config/network"
+    assert write.data == global_after
+    assert all(call.args[0].path != "/set/setting/mdns" for call in conn.request.call_args_list)
     assert before["enabled_for_network_ids"] == ["a" * 24]
-    assert conn.request.await_count == 4
+    assert conn.request.await_count == 6
 
 
 @pytest.mark.asyncio
@@ -108,7 +123,9 @@ async def test_scope_silent_drop_does_not_verify_against_old_preserved_membershi
     before = {**deepcopy(RECORD), "enabled_for_network_ids": ["a" * 24]}
     wanted = ["a" * 24, "b" * 24]
     networks = [{"_id": item, "purpose": "corporate", "ip_subnet": "10.0.1.1/24"} for item in wanted]
-    manager, conn = manager_and_connection([[before], networks, [], [deepcopy(before)]])
+    manager, conn = manager_and_connection(
+        [[before], networks, [scope_record(before)], [], [deepcopy(before)], [scope_record(before)]]
+    )
     result = await manager.update_mdns_settings({"enabled_for_network_ids": wanted})
     assert not result.success and result.mutation_applied is True
     assert "enabled_for_network_ids" in result.dropped_fields
@@ -119,11 +136,50 @@ async def test_scope_silent_drop_does_not_verify_against_old_preserved_membershi
 async def test_scope_preview_uses_fresh_inventory_and_never_writes():
     before = deepcopy(RECORD)
     networks = [{"_id": "a" * 24, "purpose": "corporate", "ip_subnet": "10.0.1.1/24"}]
-    manager, conn = manager_and_connection([[before], networks])
+    manager, conn = manager_and_connection([[before], networks, [scope_record(before)]])
     view, updates = await manager.preview_mdns_settings_update({"enabled_for_network_ids": ["a" * 24]})
     assert view.enabled_for_network_ids == ["n1", "n2"]
     assert updates["enabled_for_network_ids"] == ["a" * 24]
-    assert conn.request.await_count == 2
+    assert conn.request.await_count == 3
+    assert all(call.args[0].method == "get" for call in conn.request.call_args_list)
+
+
+def test_scope_and_services_require_separate_single_write_operations():
+    with pytest.raises(ValueError, match="separately"):
+        mdns_to_controller_update({"enabled_for_network_ids": ["a" * 24], "mode": "all"})
+
+
+@pytest.mark.asyncio
+async def test_scope_preview_uses_authoritative_global_membership_instead_of_mdns_mirror():
+    before = deepcopy(RECORD)
+    authoritative = {**scope_record(before), "mdns_enabled_for_network_ids": ["a" * 24]}
+    networks = [{"_id": "b" * 24, "purpose": "corporate", "ip_subnet": "10.0.1.1/24"}]
+    manager, _ = manager_and_connection([[before], networks, [authoritative]])
+    view, _ = await manager.preview_mdns_settings_update({"enabled_for_network_ids": ["b" * 24]})
+    assert view.enabled_for_network_ids == ["a" * 24]
+
+
+@pytest.mark.asyncio
+async def test_other_global_configuration_changes_are_failed_verification_without_replay():
+    before = {**deepcopy(RECORD), "enabled_for_network_ids": ["a" * 24]}
+    after = {**deepcopy(before), "enabled_for_network_ids": ["b" * 24]}
+    networks = [{"_id": "b" * 24, "purpose": "corporate", "ip_subnet": "10.0.1.1/24"}]
+    global_after = {**scope_record(after), "default_security_posture": "DENY_ALL"}
+    manager, conn = manager_and_connection([[before], networks, [scope_record(before)], [], [after], [global_after]])
+    result = await manager.update_mdns_settings({"enabled_for_network_ids": ["b" * 24]})
+    assert not result.success and result.mutation_applied is True
+    assert "other global network settings" in result.error
+    assert sum(call.args[0].method == "put" for call in conn.request.call_args_list) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", [[], [{}], [{"mdns_enabled_for": "some", "mdns_enabled_for_network_ids": [42]}]])
+async def test_unsupported_global_scope_fails_before_write_and_hides_values(scope):
+    before = deepcopy(RECORD)
+    networks = [{"_id": "a" * 24, "purpose": "corporate", "ip_subnet": "10.0.1.1/24"}]
+    manager, conn = manager_and_connection([[before], networks, scope])
+    with pytest.raises(RuntimeError, match="Cannot verify mDNS network scope"):
+        await manager.update_mdns_settings({"enabled_for_network_ids": ["a" * 24]})
     assert all(call.args[0].method == "get" for call in conn.request.call_args_list)
 
 

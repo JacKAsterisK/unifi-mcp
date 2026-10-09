@@ -132,5 +132,7 @@ def mdns_to_controller_update(fields: dict[str, Any]) -> dict[str, Any]:
     if any(value is None for value in fields.values()):
         raise ValueError("mDNS fields cannot be null")
     updates = parsed.model_dump(exclude_unset=True)
+    if "enabled_for_network_ids" in updates and len(updates) != 1:
+        raise ValueError("Update mDNS network scope separately from service settings.")
     validate_mdns_service_selection(updates)
     return updates
