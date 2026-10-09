@@ -228,7 +228,7 @@ class WireGuardOperations:
                     )
                 return replace(
                     verify_write(
-                        operation="create", requested=payload, after=after, absent_value_defaults={"interface_ipv6": ""}
+                        operation="create", requested=payload, after=after, absent_value_defaults={"preshared_key": ""}
                     ),
                     resource=peer_view(after),
                 )

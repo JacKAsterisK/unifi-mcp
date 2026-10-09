@@ -75,6 +75,9 @@ def controller():
         elif req.path.endswith("/users/batch"):
             assert isinstance(req.data, list) and len(req.data) == 1
             assert "network_id" not in req.data[0]
+            # Network 10.6.106 validates present address fields even when empty.
+            assert "interface_ipv6" not in req.data[0]
+            assert req.data[0]["preshared_key"] == ""
             conn.peers.append({"_id": "peer", "network_id": "server", **deepcopy(req.data[0]), "private_key": SECRET})
             if conn.dropped:
                 conn.peers[0].pop(conn.dropped, None)
@@ -213,6 +216,8 @@ async def test_peer_create_uses_v2_array_and_never_transmits_client_private_key(
     req = next(call.args[0] for call in controller.request.call_args_list if call.args[0].method == "post")
     assert req.path == "/wireguard/server/users/batch"
     assert req.data[0]["allowed_ips"] == []
+    assert "interface_ipv6" not in req.data[0]
+    assert req.data[0]["preshared_key"] == ""
     assert "private_key" not in req.data[0]
     assert SECRET not in repr(result)
 

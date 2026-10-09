@@ -87,7 +87,9 @@ class WireGuardPeerCreate(ClosedInput):
     def to_controller(self) -> dict[str, Any]:
         # Gateway allowed_ips describes networks BEHIND a peer, not the client's
         # destination AllowedIPs. Remote developers advertise no LAN routes.
-        return {**self.model_dump(), "allowed_ips": [], "interface_ipv6": ""}
+        # Network 10.6.106's editor omits empty IPv6 addresses from its batch
+        # request and explicitly disables the optional pre-shared key.
+        return {**self.model_dump(), "allowed_ips": [], "preshared_key": ""}
 
 
 class ServerCreateInput(ClosedInput):
