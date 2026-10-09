@@ -51,8 +51,12 @@ class WireGuardServerCreate(ClosedInput):
             "purpose": "remote-user-vpn",
             "vpn_type": "wireguard-server",
             "enabled": False,
-            "ipv6_subnet": "",
             "setting_preference": "manual",
+            # Omit disabled IPv6 fields: an empty subnet becomes an invalid
+            # empty interface IP when Network generates the gateway config.
+            # Network's editor supplies these defaults even in manual mode.
+            "interface_mtu_enabled": False,
+            "mss_clamp": "auto",
             "dhcpd_start": str(network.network_address + 2),
             "dhcpd_stop": str(network.broadcast_address - 1),
             "dhcpd_dns_enabled": False,

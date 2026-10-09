@@ -167,9 +167,9 @@ class WireGuardOperations:
                 if "wireguard_public_key" in public_view:
                     verification_state["wireguard_public_key"] = public_view["wireguard_public_key"]
                 requested = {**payload, "wireguard_public_key": public_key}
-                if after.get("ipv6_subnet"):
+                if after.get("ipv6_subnet") is not None:
                     return failed_write(
-                        "Controller enabled an unexpected IPv6 subnet; inspect the staged server",
+                        "Controller persisted an unexpected IPv6 subnet; inspect the staged server",
                         operation="create",
                         mutation_applied=True,
                         resource=server_view(after),
@@ -179,7 +179,6 @@ class WireGuardOperations:
                         operation="create",
                         requested=requested,
                         after=verification_state,
-                        absent_value_defaults={"ipv6_subnet": ""},
                     ),
                     resource=public_view,
                 )
@@ -303,7 +302,7 @@ class WireGuardOperations:
             raise WireGuardError("WireGuard enabled must be a boolean")
         await self._wg_session()
         before = await self._wg_server(server_id)
-        if enabled and before.get("ipv6_subnet"):
+        if enabled and before.get("ipv6_subnet") is not None:
             raise WireGuardError("IPv4 provisioning cannot enable an IPv6-configured server; review IPv6 separately")
         return before, {**deepcopy(before), "enabled": enabled}
 

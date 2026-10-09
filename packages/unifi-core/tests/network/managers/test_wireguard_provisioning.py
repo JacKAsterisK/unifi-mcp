@@ -47,6 +47,7 @@ def controller():
     conn.dropped = None
     conn.store_public_key = False
     conn.override_private_key = None
+    conn.override_ipv6_subnet = None
 
     async def request(req):
         if req.method == "get":
@@ -63,7 +64,11 @@ def controller():
         if conn.write_error:
             raise conn.write_error
         if req.path == "/rest/networkconf":
+            assert "ipv6_subnet" not in req.data
+            assert "mss_clamp_ipv6" not in req.data
             raw = {"_id": "server", **deepcopy(req.data), "opaque": SECRET}
+            if conn.override_ipv6_subnet is not None:
+                raw["ipv6_subnet"] = conn.override_ipv6_subnet
             private = X25519PrivateKey.from_private_bytes(base64.b64decode(raw["x_wireguard_private_key"]))
             if conn.store_public_key:
                 raw["wireguard_public_key"] = base64.b64encode(private.public_key().public_bytes_raw()).decode()
@@ -101,6 +106,10 @@ async def test_server_preview_is_read_only_then_create_is_disabled_verified_and_
     manager = VpnManager(controller)
     preview = await manager.prepare_wireguard_server(SERVER_INPUT)
     assert preview["enabled"] is False
+    assert preview["interface_mtu_enabled"] is False
+    assert preview["mss_clamp"] == "auto"
+    assert "ipv6_subnet" not in preview
+    assert "mss_clamp_ipv6" not in preview
     assert "x_wireguard_private_key" not in preview
     assert all(call.args[0].method == "get" for call in controller.request.call_args_list)
     result = await manager.create_wireguard_server(SERVER_INPUT)
@@ -132,7 +141,17 @@ async def test_server_preflight_rejects_collisions_without_writes(controller, co
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("field", ["enabled", "local_port", "x_wireguard_private_key", "firewall_zone_id"])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "enabled",
+        "local_port",
+        "x_wireguard_private_key",
+        "firewall_zone_id",
+        "interface_mtu_enabled",
+        "mss_clamp",
+    ],
+)
 async def test_server_silent_field_drop_cannot_report_success(controller, field):
     controller.dropped = field
     result = await VpnManager(controller).create_wireguard_server(SERVER_INPUT)
@@ -276,13 +295,32 @@ async def test_state_update_fetch_merge_put_preserves_opaque_configuration(contr
 
 
 @pytest.mark.asyncio
-async def test_ipv4_workflow_cannot_activate_an_ipv6_server(controller):
-    controller.networks.append({**SERVER, "ipv6_subnet": "fd00::1/64"})
+@pytest.mark.parametrize("subnet", ["", "fd00::1/64"])
+async def test_ipv4_workflow_cannot_activate_an_ipv6_server(controller, subnet):
+    controller.networks.append({**SERVER, "ipv6_subnet": subnet})
     manager = VpnManager(controller)
     with pytest.raises(WireGuardError, match="IPv6"):
         await manager.update_wireguard_server_state("server", True)
     assert not controller.did_write
     assert (await manager.update_wireguard_server_state("server", False)).success
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("subnet", ["", "fd00::1/64"])
+async def test_create_rejects_controller_inserting_an_ipv6_subnet(controller, subnet):
+    controller.override_ipv6_subnet = subnet
+    result = await VpnManager(controller).create_wireguard_server(SERVER_INPUT)
+    assert not result.success
+    assert result.mutation_applied is True
+    assert "IPv6" in result.error
+    assert SECRET not in repr(result)
+
+
+@pytest.mark.asyncio
+async def test_ipv4_workflow_can_activate_a_server_with_null_ipv6(controller):
+    controller.networks.append({**SERVER, "ipv6_subnet": None})
+    result = await VpnManager(controller).update_wireguard_server_state("server", True)
+    assert result.success and result.resource["enabled"] is True
 
 
 @pytest.mark.asyncio
